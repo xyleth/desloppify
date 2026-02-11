@@ -8,7 +8,25 @@ from ..utils import rel, resolve_path
 
 
 def finalize_graph(graph: dict) -> dict:
-    """Add counts to a raw graph (imports/importers sets only)."""
+    """Add counts to a raw graph (imports/importers sets only).
+
+    Also filters out nodes matching global --exclude patterns, and removes
+    references to excluded files from all import/importer sets.
+    """
+    from ..utils import _extra_exclusions
+
+    # Remove excluded nodes and clean up references
+    if _extra_exclusions:
+        excluded_keys = {k for k in graph if any(ex in k for ex in _extra_exclusions)}
+        for k in excluded_keys:
+            del graph[k]
+        # Clean import/importer sets of references to removed nodes
+        for v in graph.values():
+            v["imports"] = v["imports"] - excluded_keys
+            v["importers"] = v["importers"] - excluded_keys
+            if "deferred_imports" in v:
+                v["deferred_imports"] = v["deferred_imports"] - excluded_keys
+
     for v in graph.values():
         v["import_count"] = len(v["imports"])
         v["importer_count"] = len(v["importers"])

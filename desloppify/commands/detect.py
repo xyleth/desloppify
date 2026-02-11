@@ -7,14 +7,6 @@ from ..utils import c
 
 def cmd_detect(args):
     """Run a single detector directly (bypass state tracking)."""
-    # Apply --exclude to file discovery
-    exclude = getattr(args, "exclude", None)
-    if exclude:
-        from ..utils import _find_source_files_cached
-        import desloppify.utils as _utils
-        _utils._extra_exclusions = tuple(exclude)
-        _find_source_files_cached.cache_clear()
-
     detector = args.detector
 
     # Resolve language (from --lang flag, default to typescript)

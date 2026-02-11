@@ -172,6 +172,35 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _apply_persisted_exclusions(args):
+    """Load exclusions from state and apply to file discovery.
+
+    --exclude on the command line takes precedence. Otherwise, reuse
+    whatever was persisted from the last scan.
+    """
+    explicit = getattr(args, "exclude", None)
+    if explicit:
+        # Explicit --exclude on this command — will be persisted by scan
+        from . import utils as _utils
+        _utils._extra_exclusions = tuple(explicit)
+        _utils._find_source_files_cached.cache_clear()
+        import sys
+        print(_utils.c(f"  Excluding: {', '.join(explicit)}", "dim"), file=sys.stderr)
+        return
+
+    # No explicit flag — check state for persisted exclusions
+    sp = _state_path(args)
+    from .state import load_state
+    state = load_state(sp)
+    persisted = (state.get("config") or {}).get("exclude")
+    if persisted:
+        from . import utils as _utils
+        _utils._extra_exclusions = tuple(persisted)
+        _utils._find_source_files_cached.cache_clear()
+        import sys
+        print(_utils.c(f"  Excluding (from state): {', '.join(persisted)}", "dim"), file=sys.stderr)
+
+
 def main():
     parser = create_parser()
     args = parser.parse_args()
@@ -183,6 +212,9 @@ def main():
             args.path = str(PROJECT_ROOT / lang.default_src)
         else:
             args.path = str(DEFAULT_PATH)
+
+    # Load persisted exclusions from state (applied to all file discovery)
+    _apply_persisted_exclusions(args)
 
     # Lazy-load command handlers from commands/
     from .commands.scan import cmd_scan

@@ -9,8 +9,6 @@ import ast
 import re
 from pathlib import Path
 
-from ..utils import rel
-
 
 def _is_py_facade(filepath: str) -> dict | None:
     """Check if a Python file is a pure re-export facade.

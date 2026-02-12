@@ -212,7 +212,6 @@ def compute_score_impact(
     old_weighted = det_data["weighted_failures"]
     # Assume fixes are high-confidence (weight=1.0) — conservative estimate
     new_weighted = max(0.0, old_weighted - issues_to_fix * 1.0)
-    new_rate = max(0.0, (pot - new_weighted) / pot)
 
     # Recompute dimension score with potential-weighted averaging
     total_pot = 0

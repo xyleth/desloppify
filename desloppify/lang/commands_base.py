@@ -101,6 +101,36 @@ def make_cmd_naming(
     return cmd_naming
 
 
+def make_cmd_facade(build_dep_graph_fn: Callable, lang: str):
+    """Factory: detect re-export facades."""
+    def cmd_facade(args):
+        import json
+        from ..detectors.facade import detect_reexport_facades
+        graph = build_dep_graph_fn(Path(args.path))
+        entries, _ = detect_reexport_facades(graph, lang=lang)
+        if getattr(args, "json", False):
+            print(json.dumps({"count": len(entries), "entries": [
+                {**e, "file": rel(e["file"])} for e in entries
+            ]}, indent=2))
+            return
+        if not entries:
+            print(c("\nNo re-export facades found.", "green"))
+            return
+        file_facades = [e for e in entries if e["kind"] == "file"]
+        dir_facades = [e for e in entries if e["kind"] == "directory"]
+        if file_facades:
+            print(c(f"\nRe-export facade files: {len(file_facades)}\n", "bold"))
+            rows = [[rel(e["file"]), str(e["loc"]), str(e["importers"]),
+                     ", ".join(e["imports_from"][:3])] for e in file_facades]
+            print_table(["File", "LOC", "Importers", "Re-exports From"], rows, [50, 5, 9, 40])
+        if dir_facades:
+            print(c(f"\nFacade directories: {len(dir_facades)}\n", "bold"))
+            rows = [[rel(e["file"]), str(e.get("file_count", "?")), str(e["importers"])]
+                    for e in dir_facades]
+            print_table(["Directory", "Files", "Importers"], rows, [50, 6, 9])
+    return cmd_facade
+
+
 def make_cmd_smells(detect_smells_fn: Callable):
     """Factory: detect code smells."""
     def cmd_smells(args):

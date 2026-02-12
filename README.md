@@ -8,7 +8,7 @@ Every scan generates a scorecard badge you can add to your README — here's the
 
 ## For your agent's consideration...
 
-Copy-paste into any AI coding agent (Cursor, Windsurf, Copilot, etc.):
+Copy-paste into any AI coding agent (Cursor, Codex, Copilot, etc.):
 
 ```
 Install or update desloppify, then scan this codebase for code quality issues (dead code,

@@ -189,8 +189,29 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
 
 def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.smells import detect_smells
+    from ...detectors.signature import detect_signature_variance
+    from ...state import make_finding
     entries, total_files = detect_smells(path)
-    return make_smell_findings(entries, log), {
+    results = make_smell_findings(entries, log)
+
+    # Cross-file: signature variance
+    functions = lang.extract_functions(path) if lang.extract_functions else []
+    sig_entries, _ = detect_signature_variance(functions)
+    for e in sig_entries:
+        # Use the first file as the finding file
+        results.append(make_finding(
+            "smells", e["files"][0], f"sig_variance::{e['name']}",
+            tier=3, confidence="medium",
+            summary=f"Signature variance: {e['name']}() has {e['signature_count']} "
+                    f"different signatures across {e['file_count']} files",
+            detail={"function": e["name"], "file_count": e["file_count"],
+                    "signature_count": e["signature_count"],
+                    "variants": e["variants"][:5]},
+        ))
+    if sig_entries:
+        log(f"         signature variance: {len(sig_entries)} functions with inconsistent signatures")
+
+    return results, {
         "smells": adjust_potential(lang._zone_map, total_files),
     }
 

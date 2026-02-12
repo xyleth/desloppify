@@ -29,6 +29,12 @@ TS_SMELL_CHECKS = [
         "severity": "medium",
     },
     {
+        "id": "ts_nocheck",
+        "label": "@ts-nocheck disables all type checking",
+        "pattern": r"^\s*//\s*@ts-nocheck",
+        "severity": "high",
+    },
+    {
         "id": "non_null_assert",
         "label": "Non-null assertions (!.)",
         "pattern": r"\w+!\.",
@@ -95,6 +101,12 @@ TS_SMELL_CHECKS = [
         "severity": "low",
     },
     {
+        "id": "debug_tag",
+        "label": "Vestigial debug tag in log/print",
+        "pattern": r"""(?:['"`])\[([A-Z][A-Z0-9_]{2,})\]\s""",
+        "severity": "low",
+    },
+    {
         "id": "monster_function",
         "label": "Monster function (>150 LOC)",
         # Detected via brace-tracking
@@ -107,6 +119,30 @@ TS_SMELL_CHECKS = [
         # Detected via brace-tracking
         "pattern": None,
         "severity": "medium",
+    },
+    {
+        "id": "voided_symbol",
+        "label": "Dead internal code (void-suppressed unused symbol)",
+        "pattern": r"^\s*void\s+[a-zA-Z_]\w*\s*;?\s*$",
+        "severity": "medium",
+    },
+    {
+        "id": "window_global",
+        "label": "Window global escape hatch (window.__*)",
+        "pattern": None,  # multi-line analysis — regex needs alternation
+        "severity": "medium",
+    },
+    {
+        "id": "workaround_tag",
+        "label": "Workaround tag in comment ([PascalCaseTag])",
+        "pattern": r"//.*\[([A-Z][a-z]+(?:[A-Z][a-z]+)+)\]",
+        "severity": "low",
+    },
+    {
+        "id": "catch_return_default",
+        "label": "Catch block returns default object (silent failure)",
+        "pattern": None,  # multi-line brace-tracked
+        "severity": "high",
     },
 ]
 
@@ -328,6 +364,8 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_swallowed_errors(filepath, content, lines, smell_counts)
         _detect_monster_functions(filepath, lines, smell_counts)
         _detect_dead_functions(filepath, lines, smell_counts)
+        _detect_window_globals(filepath, lines, line_state, smell_counts)
+        _detect_catch_return_default(filepath, content, smell_counts)
 
     # Build summary entries sorted by severity then count
     severity_order = {"high": 0, "medium": 1, "low": 2}
@@ -793,4 +831,124 @@ def _detect_dead_functions(filepath: str, lines: list[str],
                 "file": filepath,
                 "line": i + 1,
                 "content": f"{name}() — body is {label}",
+            })
+
+
+def _detect_window_globals(filepath: str, lines: list[str],
+                           line_state: dict[int, str],
+                           smell_counts: dict[str, list[dict]]):
+    """Find window.__* assignments — global state escape hatches.
+
+    Matches:
+    - window.__foo = ...
+    - (window as any).__foo = ...
+    - window['__foo'] = ...
+    """
+    window_re = re.compile(
+        r"""(?:"""
+        r"""\(?\s*window\s+as\s+any\s*\)?\s*\.\s*(__\w+)"""   # (window as any).__name
+        r"""|window\s*\.\s*(__\w+)"""                           # window.__name
+        r"""|window\s*\[\s*['"](__\w+)['"]\s*\]"""              # window['__name']
+        r""")\s*=""",
+    )
+    for i, line in enumerate(lines):
+        if i in line_state:
+            continue
+        m = window_re.search(line)
+        if not m:
+            continue
+        if _ts_match_is_in_string(line, m.start()):
+            continue
+        name = m.group(1) or m.group(2) or m.group(3)
+        smell_counts["window_global"].append({
+            "file": filepath,
+            "line": i + 1,
+            "content": line.strip()[:100],
+        })
+
+
+def _detect_catch_return_default(filepath: str, content: str,
+                                  smell_counts: dict[str, list[dict]]):
+    """Find catch blocks that return object literals with default/no-op values.
+
+    Catches the pattern:
+      catch (...) { ... return { key: false, key: null, key: () => {} }; }
+
+    This is a silent failure — the caller gets valid-looking data but the
+    operation actually failed.
+    """
+    catch_re = re.compile(r"catch\s*\([^)]*\)\s*\{")
+    for m in catch_re.finditer(content):
+        brace_start = m.end() - 1
+        depth = 0
+        in_str = None
+        prev_ch = ""
+        body_end = None
+        for ci in range(brace_start, min(brace_start + 1000, len(content))):
+            ch = content[ci]
+            if in_str:
+                if ch == in_str and prev_ch != "\\":
+                    in_str = None
+                prev_ch = ch
+                continue
+            if ch in "'\"`":
+                in_str = ch
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    body_end = ci
+                    break
+            prev_ch = ch
+
+        if body_end is None:
+            continue
+
+        body = content[brace_start + 1:body_end]
+        # Check if body contains "return {" — a return with object literal
+        return_obj = re.search(r"\breturn\s*\{", body)
+        if not return_obj:
+            continue
+
+        # Extract the returned object content
+        obj_start = body.find("{", return_obj.start())
+        obj_depth = 0
+        obj_end = None
+        ois = None
+        prev = ""
+        for ci in range(obj_start, len(body)):
+            ch = body[ci]
+            if ois:
+                if ch == ois and prev != "\\":
+                    ois = None
+                prev = ch
+                continue
+            if ch in "'\"`":
+                ois = ch
+            elif ch == "{":
+                obj_depth += 1
+            elif ch == "}":
+                obj_depth -= 1
+                if obj_depth == 0:
+                    obj_end = ci
+                    break
+            prev = ch
+
+        if obj_end is None:
+            continue
+
+        obj_content = body[obj_start + 1:obj_end]
+        # Count default/no-op fields
+        noop_count = len(re.findall(r"\(\)\s*=>\s*\{\s*\}", obj_content))  # () => {}
+        false_count = len(re.findall(r":\s*(?:false|null|undefined|0|''|\"\")\b", obj_content))
+        default_fields = noop_count + false_count
+
+        if default_fields >= 2:
+            line_no = content[:m.start()].count("\n") + 1
+            lines = content.splitlines()
+            smell_counts["catch_return_default"].append({
+                "file": filepath,
+                "line": line_no,
+                "content": lines[line_no - 1].strip()[:100] if line_no <= len(lines) else "",
             })

@@ -14,8 +14,12 @@ def detect_prop_interface_bloat(path: Path) -> tuple[list[dict], int]:
     """
     entries = []
     total_interfaces = 0
-    # Match interface blocks
-    interface_re = re.compile(r"(?:export\s+)?(?:interface|type)\s+(\w+Props\w*)\s*(?:=\s*)?{", re.MULTILINE)
+    # Match interface blocks — Props, Context, State, and related suffixes
+    _BLOAT_SUFFIXES = r"(?:Props|Context|ContextValue|ContextType|State|StateValue)\w*"
+    interface_re = re.compile(
+        rf"(?:export\s+)?(?:interface|type)\s+(\w+{_BLOAT_SUFFIXES})\s*(?:=\s*)?{{",
+        re.MULTILINE,
+    )
 
     for filepath in find_ts_files(path):
         try:
@@ -47,11 +51,15 @@ def detect_prop_interface_bloat(path: Path) -> tuple[list[dict], int]:
                     pos += 1
 
                 if prop_count > 14:
+                    kind = ("context" if "Context" in name
+                            else "state" if "State" in name
+                            else "props")
                     entries.append({
                         "file": filepath,
                         "interface": name,
                         "prop_count": prop_count,
                         "line": content[:m.start()].count("\n") + 1,
+                        "kind": kind,
                     })
         except (OSError, UnicodeDecodeError):
             continue

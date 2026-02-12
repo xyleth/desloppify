@@ -47,6 +47,7 @@ TS_COMPLEXITY_SIGNALS = [
     ComplexitySignal("TODOs", r"//\s*(?:TODO|FIXME|HACK|XXX)", weight=2, threshold=0),
     ComplexitySignal("nested ternaries", r"[^?]\?[^?.:\n][^:\n]*[^?]\?[^?.]",
                      weight=3, threshold=2),
+    ComplexitySignal("useRefs", r"\buseRef\s*[<(]", weight=2, threshold=6),
 ]
 
 TS_GOD_RULES = [
@@ -197,8 +198,9 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
         results.append(make_finding(
             "props", e["file"], e["interface"],
             tier=3, confidence="medium",
-            summary=f"Bloated props: {e['interface']} ({e['prop_count']} props)",
-            detail={"prop_count": e["prop_count"], "line": e["line"]},
+            summary=f"Bloated {e.get('kind', 'props')}: {e['interface']} ({e['prop_count']} fields)",
+            detail={"prop_count": e["prop_count"], "line": e["line"],
+                    "kind": e.get("kind", "props")},
         ))
 
     # TS-specific: passthrough components
@@ -372,11 +374,28 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
 
 def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.smells import detect_smells
+    from ...detectors.signature import detect_signature_variance
     smell_entries, total_smell_files = detect_smells(path)
     results = make_smell_findings(smell_entries, log)
 
+    # Cross-file: signature variance
+    functions = lang.extract_functions(path) if lang.extract_functions else []
+    sig_entries, _ = detect_signature_variance(functions)
+    for e in sig_entries:
+        results.append(make_finding(
+            "smells", e["files"][0], f"sig_variance::{e['name']}",
+            tier=3, confidence="medium",
+            summary=f"Signature variance: {e['name']}() has {e['signature_count']} "
+                    f"different signatures across {e['file_count']} files",
+            detail={"function": e["name"], "file_count": e["file_count"],
+                    "signature_count": e["signature_count"],
+                    "variants": e["variants"][:5]},
+        ))
+    if sig_entries:
+        log(f"         signature variance: {len(sig_entries)} functions with inconsistent signatures")
+
     # TS-specific: React state sync anti-patterns
-    from .detectors.react import detect_state_sync
+    from .detectors.react import detect_state_sync, detect_context_nesting, detect_hook_return_bloat
     react_entries, total_effects = detect_state_sync(path)
     for e in react_entries:
         setter_str = ", ".join(e["setters"])
@@ -388,6 +407,32 @@ def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, i
         ))
     if react_entries:
         log(f"         react: {len(react_entries)} state sync anti-patterns")
+
+    # TS-specific: Context provider nesting depth
+    nesting_entries, _ = detect_context_nesting(path)
+    for e in nesting_entries:
+        providers_str = " → ".join(e["providers"][:5])
+        results.append(make_finding(
+            "react", e["file"], f"nesting::{e['depth']}",
+            tier=3, confidence="medium",
+            summary=f"Deep provider nesting ({e['depth']} levels): {providers_str}",
+            detail={"depth": e["depth"], "providers": e["providers"]},
+        ))
+    if nesting_entries:
+        log(f"         react: {len(nesting_entries)} deep provider nesting")
+
+    # TS-specific: Hook return bloat
+    hook_entries, _ = detect_hook_return_bloat(path)
+    for e in hook_entries:
+        results.append(make_finding(
+            "react", e["file"], f"hook_bloat::{e['hook']}",
+            tier=3, confidence="medium",
+            summary=f"Hook return bloat: {e['hook']} returns {e['field_count']} fields",
+            detail={"hook": e["hook"], "field_count": e["field_count"], "line": e["line"]},
+        ))
+    if hook_entries:
+        log(f"         react: {len(hook_entries)} bloated hook returns")
+
     return results, {
         "smells": adjust_potential(lang._zone_map, total_smell_files),
         "react": total_effects,

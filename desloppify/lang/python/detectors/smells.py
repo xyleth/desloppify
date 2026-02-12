@@ -28,7 +28,12 @@ SMELL_CHECKS = [
     _smell("todo_fixme", "TODO/FIXME/HACK comments", "low", r"#\s*(?:TODO|FIXME|HACK|XXX)"),
     _smell("hardcoded_url", "Hardcoded URL in source code",
            "medium", r"""(?:['"])https?://[^\s'"]+(?:['"])"""),
+    _smell("debug_tag", "Vestigial debug tag in log/print",
+           "low", r"""(?:f?['"])\[([A-Z][A-Z0-9_]{2,})\]\s"""),
+    _smell("workaround_tag", "Workaround tag in comment ([PascalCaseTag])",
+           "low", r"#.*\[([A-Z][a-z]+(?:[A-Z][a-z]+)+)\]"),
     # Multi-line detectors (no regex pattern)
+    _smell("star_import_no_all", "Star import target has no __all__ (uncontrolled namespace)", "medium"),
     _smell("empty_except", "Empty except block (except: pass)", "high"),
     _smell("swallowed_error", "Catch block that only logs (swallowed error)", "high"),
     # AST-based detectors (no regex pattern)
@@ -187,6 +192,7 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_empty_except(filepath, lines, smell_counts)
         _detect_swallowed_errors(filepath, lines, smell_counts)
         _detect_ast_smells(filepath, content, smell_counts)
+        _detect_star_import_no_all(filepath, content, path, smell_counts)
 
     severity_order = {"high": 0, "medium": 1, "low": 2}
     entries = []
@@ -343,3 +349,81 @@ def _detect_inline_classes(filepath: str, node: ast.AST, smell_counts: dict[str,
                 "file": filepath, "line": child.lineno,
                 "content": f"class {child.name} defined inside {node.name}()",
             })
+
+
+def _detect_star_import_no_all(filepath: str, content: str, scan_root: Path,
+                                smell_counts: dict[str, list]):
+    """Flag `from X import *` where the target module has no __all__.
+
+    Resolves relative and absolute imports within the scan root and checks
+    whether the target .py file defines __all__. Only flags targets that
+    are part of the scanned project (not stdlib/third-party).
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return
+
+    file_path = Path(filepath)
+    file_dir = file_path.parent
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        # Only care about star imports
+        if not any(alias.name == "*" for alias in node.names):
+            continue
+
+        module = node.module or ""
+        level = node.level  # 0 = absolute, 1+ = relative
+
+        # Resolve to a file path
+        target = _resolve_import_target(module, level, file_dir, scan_root)
+        if target is None:
+            continue
+
+        # Check if target defines __all__
+        try:
+            target_content = target.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        if re.search(r"^__all__\s*=", target_content, re.MULTILINE):
+            continue  # Has __all__, controlled export — skip
+
+        smell_counts["star_import_no_all"].append({
+            "file": filepath,
+            "line": node.lineno,
+            "content": f"from {('.' * level) + module} import * (target has no __all__)",
+        })
+
+
+def _resolve_import_target(module: str, level: int, file_dir: Path,
+                            scan_root: Path) -> Path | None:
+    """Resolve a Python import to a file path within the scan root.
+
+    Returns the target .py file, or None if unresolvable or outside the project.
+    """
+    if level > 0:
+        # Relative import — go up (level - 1) directories from file_dir
+        base = file_dir
+        for _ in range(level - 1):
+            base = base.parent
+    else:
+        # Absolute import — start from scan root's parent (package root)
+        base = scan_root.parent
+
+    # Convert module dotted path to filesystem path
+    parts = module.split(".") if module else []
+    target_dir = base / Path(*parts) if parts else base
+
+    # Check for package (__init__.py) or module (.py)
+    init_path = target_dir / "__init__.py"
+    if init_path.is_file():
+        return init_path
+
+    module_path = target_dir.with_suffix(".py")
+    if module_path.is_file():
+        return module_path
+
+    return None

@@ -11,13 +11,22 @@ from .utils import PROJECT_ROOT
 _SCALE = 2
 
 
-def _score_color(score: float) -> tuple[int, int, int]:
-    """Color-code a score: deep sage >= 90, mustard 70-90, dusty rose < 70."""
+def _score_color(score: float, *, muted: bool = False) -> tuple[int, int, int]:
+    """Color-code a score: deep sage >= 90, mustard 70-90, dusty rose < 70.
+
+    muted=True returns a desaturated variant for secondary display (strict column).
+    """
     if score >= 90:
-        return (88, 129, 87)     # deep sage
-    if score >= 70:
-        return (178, 148, 72)    # warm mustard
-    return (168, 90, 90)         # dusty rose
+        base = (88, 129, 87)     # deep sage
+    elif score >= 70:
+        base = (178, 148, 72)    # warm mustard
+    else:
+        base = (168, 90, 90)     # dusty rose
+    if not muted:
+        return base
+    # Blend toward warm gray for a secondary feel
+    gray = (158, 142, 122)
+    return tuple(int(b * 0.55 + g * 0.45) for b, g in zip(base, gray))
 
 
 def _load_font(size: int, *, serif: bool = False, bold: bool = False, mono: bool = False):
@@ -211,9 +220,10 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     header_bbox = draw.textbbox((0, 0), "Dimension", font=font_header)
     header_h = header_bbox[3] - header_bbox[1]
     rule_gap = _s(4)
+    rows_gap = _s(10)  # gap between header underline and first row
 
-    # Total table content: header + rule + rows
-    table_content_h = header_h + rule_gap + _s(2) + row_count * row_h
+    # Total table content: header + rule + gap + rows
+    table_content_h = header_h + rule_gap + rows_gap + row_count * row_h
     table_bot = table_top + table_h
     table_content_top = table_top + (table_h - table_content_h) // 2
 
@@ -227,7 +237,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
     draw.rectangle((col_name, line_y, table_x2 - _s(12), line_y), fill=BORDER)
 
     # --- Dimension rows with alternating tint ---
-    y = line_y + _s(7)
+    y = line_y + rows_gap
     for i, (name, data) in enumerate(active_dims):
         if i % 2 == 1:
             draw.rectangle((table_x1 + 1, y - _s(1), table_x2 - 1, y + row_h - _s(3)), fill=BG_ROW_ALT)
@@ -235,7 +245,7 @@ def generate_scorecard(state: dict, output_path: str | Path) -> Path:
         strict = data.get("strict", score)
         draw.text((col_name, y), name, fill=TEXT, font=font_row)
         draw.text((col_health, y), f"{score:.1f}%", fill=_score_color(score), font=font_row)
-        draw.text((col_strict, y), f"{strict:.1f}%", fill=_score_color(strict), font=font_row)
+        draw.text((col_strict, y), f"{strict:.1f}%", fill=_score_color(strict, muted=True), font=font_row)
         y += row_h
 
     # --- Footer: vertically centered between table bottom and inner frame ---

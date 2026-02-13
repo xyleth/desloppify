@@ -31,6 +31,7 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
             ["npx", "tsc", "--project", str(tmp_path), "--noEmit"],
             capture_output=True, text=True, cwd=PROJECT_ROOT,
             timeout=120,
+            shell=(sys.platform == "win32"),
         )
     finally:
         tmp_path.unlink(missing_ok=True)

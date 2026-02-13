@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -12,7 +11,9 @@ from ..base import (BoundaryRule, DetectorPhase, FixerConfig, LangConfig,
                     add_structural_signal, merge_structural_signals,
                     make_single_use_findings, make_cycle_findings,
                     make_orphaned_findings, make_smell_findings,
-                    make_facade_findings, phase_dupes)
+                    make_facade_findings, phase_dupes,
+                    phase_test_coverage, phase_security,
+                    phase_subjective_review)
 from ...detectors.base import ComplexitySignal, GodRule
 from ...state import make_finding
 from ...utils import find_ts_files, get_area, log, rel
@@ -166,6 +167,7 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
     for e in complexity_entries:
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"], "complexity_signals": e["signals"]})
+        lang._complexity_map[e["file"]] = e["score"]
 
     god_entries, _ = detect_gods(extract_ts_components(path), TS_GOD_RULES, min_reasons=2)
     for e in god_entries:
@@ -456,70 +458,78 @@ def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, i
     }
 
 
-def _find_external_test_files(path: Path, lang_name: str) -> set[str]:
-    """Find test files in standard locations outside the scanned path."""
-    from ...utils import PROJECT_ROOT
-    extra = set()
-    for test_dir in ("tests", "test", "__tests__"):
-        d = PROJECT_ROOT / test_dir
-        if not d.is_dir():
-            continue
-        try:
-            d.resolve().relative_to(path.resolve())
-            continue
-        except ValueError:
-            pass
-        ext = ".py" if lang_name == "python" else (".ts", ".tsx")
-        for root, _, files in os.walk(d):
-            for f in files:
-                if isinstance(ext, tuple):
-                    if any(f.endswith(e) for e in ext):
-                        extra.add(os.path.join(root, f))
-                elif f.endswith(ext):
-                    extra.add(os.path.join(root, f))
-    return extra
-
-
-def _phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from ...detectors.test_coverage import detect_test_coverage
-    from ...state import make_finding
-
-    zm = lang._zone_map
-    if zm is None:
-        return [], {}
-
-    graph = lang._dep_graph or lang.build_dep_graph(path)
-    extra = _find_external_test_files(path, lang.name)
-    entries, potential = detect_test_coverage(graph, zm, lang.name,
-                                              extra_test_files=extra or None)
-    entries = filter_entries(zm, entries, "test_coverage")
-
-    results = []
-    for e in entries:
-        results.append(make_finding(
-            "test_coverage", e["file"], e.get("name", ""),
-            tier=e["tier"], confidence=e["confidence"],
-            summary=e["summary"], detail=e.get("detail", {}),
-        ))
-
-    if results:
-        log(f"         test coverage: {len(results)} findings ({potential} production files)")
-    else:
-        log(f"         test coverage: clean ({potential} production files)")
-
-    return results, {"test_coverage": potential}
 
 
 def _get_ts_fixers() -> dict[str, FixerConfig]:
-    """Build the TypeScript fixer registry (lazy-loaded)."""
+    """Build the TypeScript fixer registry (lazy-loaded).
+
+    Detection and fix functions use lazy imports so detector modules
+    aren't loaded until the fix command actually runs.
+    """
+    from ..base import FixResult
+
+    def _det_unused(cat):
+        def f(path):
+            from .detectors.unused import detect_unused
+            return detect_unused(path, category=cat)[0]
+        return f
+
+    def _det_logs(path):
+        from .detectors.logs import detect_logs
+        return detect_logs(path)[0]
+
+    def _det_exports(path):
+        from .detectors.exports import detect_dead_exports
+        return detect_dead_exports(path)[0]
+
+    def _det_smell(smell_id):
+        def f(path):
+            from .detectors.smells import detect_smells
+            return next((e.get("matches", []) for e in detect_smells(path)[0]
+                         if e["id"] == smell_id), [])
+        return f
+
+    def _fix_vars(entries, *, dry_run=False):
+        from .fixers import fix_unused_vars
+        results, skip_reasons = fix_unused_vars(entries, dry_run=dry_run)
+        return FixResult(entries=results, skip_reasons=skip_reasons)
+
+    def _fix_logs(entries, *, dry_run=False):
+        from .fixers import fix_debug_logs
+        results = fix_debug_logs(entries, dry_run=dry_run)
+        for r in results:
+            r["removed"] = r.get("tags", r.get("removed", []))
+        return results
+
+    def _lazy_fix(name):
+        def f(entries, **kw):
+            from . import fixers as F
+            return getattr(F, name)(entries, **kw)
+        return f
+
+    R, DV = "Removed", "Would remove"
     return {
         "unused-imports": FixerConfig(
-            label="unused imports",
-            detect=lambda path: __import__("desloppify.lang.typescript.detectors.unused", fromlist=["detect_unused"]).detect_unused(path, category="imports")[0],
-            fix=lambda entries, **kw: __import__("desloppify.lang.typescript.fixers", fromlist=["fix_unused_imports"]).fix_unused_imports(entries, **kw),
-            detector="unused",
-            verb="Removed", dry_verb="Would remove",
-        ),
+            "unused imports", _det_unused("imports"),
+            _lazy_fix("fix_unused_imports"), "unused", R, DV),
+        "debug-logs": FixerConfig(
+            "tagged debug logs", _det_logs, _fix_logs, "logs", R, DV),
+        "dead-exports": FixerConfig(
+            "dead exports", _det_exports,
+            _lazy_fix("fix_dead_exports"), "exports",
+            "De-exported", "Would de-export"),
+        "unused-vars": FixerConfig(
+            "unused vars", _det_unused("vars"), _fix_vars, "unused", R, DV),
+        "unused-params": FixerConfig(
+            "unused params", _det_unused("vars"),
+            _lazy_fix("fix_unused_params"), "unused",
+            "Prefixed", "Would prefix"),
+        "dead-useeffect": FixerConfig(
+            "dead useEffect calls", _det_smell("dead_useeffect"),
+            _lazy_fix("fix_dead_useeffect"), "smells", R, DV),
+        "empty-if-chain": FixerConfig(
+            "empty if/else chains", _det_smell("empty_if_chain"),
+            _lazy_fix("fix_empty_if_chain"), "smells", R, DV),
     }
 
 
@@ -544,6 +554,10 @@ def _ts_extract_functions(path: Path) -> list:
 
 @register_lang("typescript")
 class TypeScriptConfig(LangConfig):
+    def detect_lang_security(self, files, zone_map):
+        from .detectors.security import detect_ts_security
+        return detect_ts_security(files, zone_map)
+
     def __init__(self):
         from .commands import get_detect_commands
         super().__init__(
@@ -565,8 +579,10 @@ class TypeScriptConfig(LangConfig):
                 DetectorPhase("Deprecated", _phase_deprecated),
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + single-use + patterns + naming", _phase_coupling),
-                DetectorPhase("Test coverage", _phase_test_coverage),
+                DetectorPhase("Test coverage", phase_test_coverage),
                 DetectorPhase("Code smells", _phase_smells),
+                DetectorPhase("Security", phase_security),
+                DetectorPhase("Subjective review", phase_subjective_review),
                 DetectorPhase("Duplicates", phase_dupes, slow=True),
             ],
             fixers=_get_ts_fixers(),

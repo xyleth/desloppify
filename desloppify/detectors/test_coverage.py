@@ -7,12 +7,13 @@ moves the score more than testing ten trivial ones.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from collections import deque
 from pathlib import Path
 
-from ..utils import SRC_PATH
+from ..utils import PROJECT_ROOT, SRC_PATH
 from ..zones import FileZoneMap, Zone
 
 # ── Assertion / mock / snapshot patterns ──────────────────
@@ -65,6 +66,7 @@ def detect_test_coverage(
     zone_map: FileZoneMap,
     lang_name: str,
     extra_test_files: set[str] | None = None,
+    complexity_map: dict[str, float] | None = None,
 ) -> tuple[list[dict], int]:
     """Detect test coverage gaps.
 
@@ -73,29 +75,51 @@ def detect_test_coverage(
         zone_map: FileZoneMap from lang._zone_map
         lang_name: "python" or "typescript"
         extra_test_files: test files outside the scanned path (e.g. PROJECT_ROOT/tests/)
+        complexity_map: {filepath: complexity_score} from structural phase — files above
+            _COMPLEXITY_TIER_UPGRADE threshold get their tier upgraded to 2
 
     Returns:
         (entries, potential) where entries are finding-like dicts and potential
-        is the count of production files (for scoring denominator).
+        is LOC-weighted (sqrt(loc) capped at 50 per file).
     """
+    # Normalize graph paths to relative (zone_map uses relative paths, graph may use absolute)
+    root_prefix = str(PROJECT_ROOT) + os.sep
+    def _to_rel(p: str) -> str:
+        return p[len(root_prefix):] if p.startswith(root_prefix) else p
+
+    needs_norm = any(k.startswith(root_prefix) for k in list(graph)[:3])
+    if needs_norm:
+        norm_graph: dict = {}
+        for k, v in graph.items():
+            rk = _to_rel(k)
+            norm_graph[rk] = {
+                **v,
+                "imports": {_to_rel(imp) for imp in v.get("imports", set())},
+            }
+        graph = norm_graph
+
     all_files = zone_map.all_files()
     production_files = set(zone_map.include_only(all_files, Zone.PRODUCTION, Zone.SCRIPT))
     test_files = set(zone_map.include_only(all_files, Zone.TEST))
 
-    # Include test files from outside the scanned path
+    # Include test files from outside the scanned path (normalize to relative)
     if extra_test_files:
-        test_files |= extra_test_files
+        test_files |= {_to_rel(f) for f in extra_test_files}
 
     # Only score production files that are substantial enough to warrant tests
     scorable = {f for f in production_files if _file_loc(f) >= _MIN_LOC}
-    potential = len(scorable)
 
-    if potential == 0:
+    if not scorable:
         return [], 0
+
+    # LOC-weighted potential: sqrt(loc) capped at 50 per file.
+    # This weights large untested files more heavily — a 500-LOC untested file
+    # contributes ~22x more to score impact than a 15-LOC file.
+    potential = round(sum(min(math.sqrt(_file_loc(f)), 50) for f in scorable))
 
     # If zero test files, emit findings for top modules by LOC
     if not test_files:
-        entries = _no_tests_findings(scorable, graph)
+        entries = _no_tests_findings(scorable, graph, complexity_map)
         return entries, potential
 
     # Step 1: Import-based mapping (precise)
@@ -115,6 +139,7 @@ def detect_test_coverage(
     entries = _generate_findings(
         scorable, directly_tested, transitively_tested,
         test_quality, graph, lang_name,
+        complexity_map=complexity_map,
     )
 
     return entries, potential
@@ -131,23 +156,39 @@ def _file_loc(filepath: str) -> int:
         return 0
 
 
+def _loc_weight(loc: int) -> float:
+    """Compute LOC weight for a file: sqrt(loc) capped at 50."""
+    return min(math.sqrt(loc), 50)
+
+
 def _no_tests_findings(
     scorable: set[str], graph: dict,
+    complexity_map: dict[str, float] | None = None,
 ) -> list[dict]:
     """Generate findings when there are zero test files."""
+    cmap = complexity_map or {}
     # Sort by LOC descending, take top N
     by_loc = sorted(scorable, key=lambda f: -_file_loc(f))
     entries = []
     for f in by_loc[:_MAX_NO_TESTS_ENTRIES]:
         loc = _file_loc(f)
         ic = graph.get(f, {}).get("importer_count", 0)
+        complexity = cmap.get(f, 0)
+        is_complex = complexity >= _COMPLEXITY_TIER_UPGRADE
+        is_critical = ic >= 10 or is_complex
+        tier = 2 if is_critical else 3
+        kind = "untested_critical" if is_critical else "untested_module"
+        detail: dict = {"kind": kind, "loc": loc, "importer_count": ic,
+                        "loc_weight": _loc_weight(loc)}
+        if is_complex:
+            detail["complexity_score"] = complexity
         entries.append({
             "file": f,
             "name": "",
-            "tier": 2 if ic >= 10 else 3,
+            "tier": tier,
             "confidence": "high",
             "summary": f"Untested module ({loc} LOC, {ic} importers) — no test files found",
-            "detail": {"kind": "untested_module", "loc": loc, "importer_count": ic},
+            "detail": detail,
         })
     return entries
 
@@ -162,11 +203,13 @@ def _import_based_mapping(
     Python/TS import statements to find references to production files.
     """
     tested = set()
-    # Build basename→paths index for fuzzy resolution
+    # Build module-name→path index for resolving test imports
     prod_by_module: dict[str, str] = {}
+    root_str = str(PROJECT_ROOT) + os.sep
     for pf in production_files:
-        # Map module-style paths: "desloppify/utils.py" → "desloppify.utils"
-        mod = pf.replace("/", ".").replace("\\", ".")
+        # Convert to relative path from PROJECT_ROOT for module name mapping
+        rel_pf = pf[len(root_str):] if pf.startswith(root_str) else pf
+        mod = rel_pf.replace("/", ".").replace("\\", ".")
         if mod.endswith(".py"):
             mod = mod[:-3]
         elif mod.endswith(".ts") or mod.endswith(".tsx"):
@@ -538,6 +581,12 @@ def _get_test_files_for_prod(
     return result
 
 
+
+# Complexity score threshold for upgrading test coverage tier.
+# Files above this are risky enough without tests to warrant tier 2.
+_COMPLEXITY_TIER_UPGRADE = 20
+
+
 def _generate_findings(
     scorable: set[str],
     directly_tested: set[str],
@@ -545,9 +594,11 @@ def _generate_findings(
     test_quality: dict[str, dict],
     graph: dict,
     lang_name: str,
+    complexity_map: dict[str, float] | None = None,
 ) -> list[dict]:
     """Generate test coverage findings from the analysis results."""
     entries: list[dict] = []
+    cmap = complexity_map or {}
 
     # Collect all test files for mapping
     test_files = set(test_quality.keys())
@@ -555,6 +606,7 @@ def _generate_findings(
     for f in scorable:
         loc = _file_loc(f)
         ic = graph.get(f, {}).get("importer_count", 0)
+        lw = _loc_weight(loc)
 
         if f in directly_tested:
             # Check quality of the test(s) for this file
@@ -573,7 +625,8 @@ def _generate_findings(
                         "summary": (f"Assertion-free test: {os.path.basename(tf)} "
                                     f"has {tq['test_functions']} test functions but 0 assertions"),
                         "detail": {"kind": "assertion_free_test", "test_file": tf,
-                                   "test_functions": tq["test_functions"]},
+                                   "test_functions": tq["test_functions"],
+                                   "loc_weight": lw},
                     })
                 elif tq["quality"] == "smoke":
                     entries.append({
@@ -586,7 +639,8 @@ def _generate_findings(
                                     f"{tq['test_functions']} test functions"),
                         "detail": {"kind": "shallow_tests", "test_file": tf,
                                    "assertions": tq["assertions"],
-                                   "test_functions": tq["test_functions"]},
+                                   "test_functions": tq["test_functions"],
+                                   "loc_weight": lw},
                     })
                 elif tq["quality"] == "over_mocked":
                     entries.append({
@@ -597,7 +651,8 @@ def _generate_findings(
                         "summary": (f"Over-mocked tests: {os.path.basename(tf)} has "
                                     f"{tq['mocks']} mocks vs {tq['assertions']} assertions"),
                         "detail": {"kind": "over_mocked", "test_file": tf,
-                                   "mocks": tq["mocks"], "assertions": tq["assertions"]},
+                                   "mocks": tq["mocks"], "assertions": tq["assertions"],
+                                   "loc_weight": lw},
                     })
                 elif tq["quality"] == "snapshot_heavy" and lang_name != "python":
                     entries.append({
@@ -609,23 +664,37 @@ def _generate_findings(
                                     f"{tq['snapshots']} snapshots vs {tq['assertions']} assertions"),
                         "detail": {"kind": "snapshot_heavy", "test_file": tf,
                                    "snapshots": tq["snapshots"],
-                                   "assertions": tq["assertions"]},
+                                   "assertions": tq["assertions"],
+                                   "loc_weight": lw},
                     })
 
         elif f in transitively_tested:
+            complexity = cmap.get(f, 0)
+            is_complex = complexity >= _COMPLEXITY_TIER_UPGRADE
+            tier = 2 if (ic >= 10 or is_complex) else 3
+            detail: dict = {"kind": "transitive_only", "loc": loc, "importer_count": ic,
+                            "loc_weight": lw}
+            if is_complex:
+                detail["complexity_score"] = complexity
             entries.append({
                 "file": f,
                 "name": "transitive_only",
-                "tier": 2 if ic >= 10 else 3,
+                "tier": tier,
                 "confidence": "medium",
                 "summary": (f"No direct tests ({loc} LOC, {ic} importers) "
                             f"— covered only via imports from tested modules"),
-                "detail": {"kind": "transitive_only", "loc": loc, "importer_count": ic},
+                "detail": detail,
             })
 
         else:
             # Untested
-            if ic >= 10:
+            complexity = cmap.get(f, 0)
+            is_complex = complexity >= _COMPLEXITY_TIER_UPGRADE
+            if ic >= 10 or is_complex:
+                detail = {"kind": "untested_critical", "loc": loc, "importer_count": ic,
+                          "loc_weight": lw}
+                if is_complex:
+                    detail["complexity_score"] = complexity
                 entries.append({
                     "file": f,
                     "name": "untested_critical",
@@ -633,7 +702,7 @@ def _generate_findings(
                     "confidence": "high",
                     "summary": (f"Untested critical module ({loc} LOC, {ic} importers) "
                                 f"— high blast radius"),
-                    "detail": {"kind": "untested_critical", "loc": loc, "importer_count": ic},
+                    "detail": detail,
                 })
             else:
                 entries.append({
@@ -642,7 +711,8 @@ def _generate_findings(
                     "tier": 3,
                     "confidence": "high",
                     "summary": f"Untested module ({loc} LOC, {ic} importers)",
-                    "detail": {"kind": "untested_module", "loc": loc, "importer_count": ic},
+                    "detail": {"kind": "untested_module", "loc": loc, "importer_count": ic,
+                               "loc_weight": lw},
                 })
 
     return entries

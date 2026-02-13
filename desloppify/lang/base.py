@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from ..state import make_finding
-from ..utils import PROJECT_ROOT, rel, resolve_path
+from ..enums import Tier
+from ..state import Finding, make_finding
+from ..utils import PROJECT_ROOT, log, rel, resolve_path
 
 
 @dataclass
@@ -19,8 +20,15 @@ class DetectorPhase:
     raw detector output to findings with tiers/confidence).
     """
     label: str
-    run: Callable[[Path, LangConfig], list[dict]]
+    run: Callable[[Path, LangConfig], tuple[list[Finding], dict[str, int]]]
     slow: bool = False
+
+
+@dataclass
+class FixResult:
+    """Return type for fixer wrappers that need to carry metadata."""
+    entries: list[dict]
+    skip_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -92,9 +100,11 @@ class LangConfig:
     zone_rules: list = field(default_factory=list)
     _zone_map: object = field(default=None, repr=False)  # FileZoneMap, set at scan time
     _dep_graph: object = field(default=None, repr=False)  # dep graph, set at scan time
+    _review_cache: dict = field(default_factory=dict, repr=False)  # review cache, set before scan
+    _complexity_map: dict = field(default_factory=dict, repr=False)  # file→score, set at scan time
 
 
-def make_unused_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_unused_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Transform raw unused-detector entries into normalized findings.
 
     Shared by both Python and TypeScript unused phases.
@@ -112,7 +122,7 @@ def make_unused_findings(entries: list[dict], stderr_fn) -> list[dict]:
     return results
 
 
-def make_dupe_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_dupe_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Transform clustered duplicate entries into normalized findings.
 
     Each entry represents a cluster of similar functions. One finding per cluster.
@@ -164,7 +174,7 @@ def add_structural_signal(structural: dict, file: str, signal: str, detail: dict
 
 
 def merge_structural_signals(structural: dict, stderr_fn,
-                              *, complexity_only_min: int = 35) -> list[dict]:
+                              *, complexity_only_min: int = 35) -> list[Finding]:
     """Convert per-file structural signals into tiered findings.
 
     3+ signals -> T4/high (needs decomposition).
@@ -215,7 +225,7 @@ def make_single_use_findings(
     suppress_colocated: bool = True,
     skip_dir_names: set[str] | None = None,
     stderr_fn,
-) -> list[dict]:
+) -> list[Finding]:
     """Filter and normalize single-use entries into findings.
 
     Suppresses entries within the LOC range (they're appropriately-sized abstractions),
@@ -252,7 +262,7 @@ def make_single_use_findings(
     return results
 
 
-def make_cycle_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_cycle_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Normalize import cycles into findings."""
     results = []
     for cy in entries:
@@ -274,7 +284,7 @@ def make_cycle_findings(entries: list[dict], stderr_fn) -> list[dict]:
     return results
 
 
-def make_orphaned_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_orphaned_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Normalize orphaned file entries into findings."""
     results = []
     for e in entries:
@@ -289,10 +299,10 @@ def make_orphaned_findings(entries: list[dict], stderr_fn) -> list[dict]:
     return results
 
 
-SMELL_TIER_MAP = {"high": 2, "medium": 3, "low": 3}
+SMELL_TIER_MAP = {"high": Tier.QUICK_FIX, "medium": Tier.JUDGMENT, "low": Tier.JUDGMENT}
 
 
-def make_smell_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_smell_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Group smell entries by file and assign tiers from severity.
 
     Input: list of smell dicts from detect_smells, each with id/label/severity/matches.
@@ -319,7 +329,7 @@ def make_smell_findings(entries: list[dict], stderr_fn) -> list[dict]:
     return results
 
 
-def phase_dupes(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def phase_dupes(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
     """Shared phase runner: detect duplicate functions via lang.extract_functions.
 
     When a zone map is available, filters out functions from zone-excluded files
@@ -349,7 +359,7 @@ def make_passthrough_findings(
     name_key: str,
     total_key: str,
     stderr_fn,
-) -> list[dict]:
+) -> list[Finding]:
     """Normalize passthrough detection results into findings."""
     results = []
     for e in entries:
@@ -366,7 +376,7 @@ def make_passthrough_findings(
     return results
 
 
-def make_facade_findings(entries: list[dict], stderr_fn) -> list[dict]:
+def make_facade_findings(entries: list[dict], stderr_fn) -> list[Finding]:
     """Normalize re-export facade entries into findings."""
     results = []
     for e in entries:
@@ -390,3 +400,126 @@ def make_facade_findings(entries: list[dict], stderr_fn) -> list[dict]:
     if entries:
         stderr_fn(f"         facades: {len(entries)} re-export facade findings")
     return results
+
+
+# ── Shared phase runners ──────────────────────────────────────
+
+
+def find_external_test_files(path: Path, lang_name: str) -> set[str]:
+    """Find test files in standard locations outside the scanned path."""
+    import os
+    extra = set()
+    test_dirs = ["tests", "test"]
+    if lang_name != "python":
+        test_dirs.append("__tests__")
+    for test_dir in test_dirs:
+        d = PROJECT_ROOT / test_dir
+        if not d.is_dir():
+            continue
+        try:
+            d.resolve().relative_to(path.resolve())
+            continue  # test_dir is inside scanned path, zone_map already has it
+        except ValueError:
+            pass
+        ext = ".py" if lang_name == "python" else (".ts", ".tsx")
+        for root, _, files in os.walk(d):
+            for f in files:
+                if isinstance(ext, tuple):
+                    if any(f.endswith(e) for e in ext):
+                        extra.add(os.path.join(root, f))
+                elif f.endswith(ext):
+                    extra.add(os.path.join(root, f))
+    return extra
+
+
+def phase_security(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
+    """Shared phase: detect security issues (cross-language + lang-specific)."""
+    from ..detectors.security import detect_security_issues
+    from ..zones import filter_entries
+
+    zm = lang._zone_map
+    files = lang.file_finder(path) if lang.file_finder else []
+    entries, potential = detect_security_issues(files, zm, lang.name)
+
+    # Also call lang-specific security detectors if available
+    if hasattr(lang, 'detect_lang_security'):
+        lang_entries, _ = lang.detect_lang_security(files, zm)
+        entries.extend(lang_entries)
+
+    entries = filter_entries(zm, entries, "security")
+
+    results = []
+    for e in entries:
+        finding = make_finding(
+            "security", e["file"], e["name"],
+            tier=e["tier"], confidence=e["confidence"],
+            summary=e["summary"], detail=e["detail"],
+        )
+        # Stamp zone so scoring zone override works
+        if zm is not None:
+            finding["zone"] = zm.get(e["file"]).value
+        results.append(finding)
+
+    if results:
+        log(f"         security: {len(results)} findings ({potential} files scanned)")
+    else:
+        log(f"         security: clean ({potential} files scanned)")
+
+    return results, {"security": potential}
+
+
+def phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
+    """Shared phase: detect test coverage gaps."""
+    from ..detectors.test_coverage import detect_test_coverage
+    from ..zones import filter_entries
+
+    zm = lang._zone_map
+    if zm is None:
+        return [], {}
+
+    graph = lang._dep_graph or lang.build_dep_graph(path)
+    extra = find_external_test_files(path, lang.name)
+    entries, potential = detect_test_coverage(graph, zm, lang.name,
+                                              extra_test_files=extra or None,
+                                              complexity_map=lang._complexity_map or None)
+    entries = filter_entries(zm, entries, "test_coverage")
+
+    results = []
+    for e in entries:
+        results.append(make_finding(
+            "test_coverage", e["file"], e.get("name", ""),
+            tier=e["tier"], confidence=e["confidence"],
+            summary=e["summary"], detail=e.get("detail", {}),
+        ))
+
+    if results:
+        log(f"         test coverage: {len(results)} findings ({potential} production files)")
+    else:
+        log(f"         test coverage: clean ({potential} production files)")
+
+    return results, {"test_coverage": potential}
+
+
+def phase_subjective_review(path: Path, lang: LangConfig) -> tuple[list[Finding], dict[str, int]]:
+    """Shared phase: detect files missing subjective design review."""
+    from ..detectors.review_coverage import detect_review_coverage
+
+    zm = lang._zone_map
+    files = lang.file_finder(path) if lang.file_finder else []
+    entries, potential = detect_review_coverage(files, zm, lang._review_cache, lang.name)
+
+    results = []
+    for e in entries:
+        finding = make_finding(
+            "subjective_review", e["file"], e["name"],
+            tier=e["tier"], confidence=e["confidence"],
+            summary=e["summary"], detail=e["detail"],
+        )
+        results.append(finding)
+
+    if results:
+        log(f"         subjective review: {len(results)} findings ({potential} reviewable files)")
+    else:
+        log(f"         subjective review: clean ({potential} reviewable files)")
+
+    return results, {"subjective_review": potential}

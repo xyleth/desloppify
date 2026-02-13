@@ -4,13 +4,11 @@ import inspect
 
 import pytest
 
+from desloppify.lang.base import FixResult
 from desloppify.commands.fix_cmd import (
-    _ResultsWithMeta,
     _resolve_fixer_results,
     _print_fix_summary,
     _print_fix_retro,
-    _wrap_unused_vars_fix,
-    _wrap_debug_logs_fix,
     _SKIP_REASON_LABELS,
     cmd_fix,
 )
@@ -26,8 +24,10 @@ class TestFixModuleSanity:
     def test_cmd_fix_callable(self):
         assert callable(cmd_fix)
 
-    def test_results_with_meta_is_list(self):
-        assert issubclass(_ResultsWithMeta, list)
+    def test_fix_result_is_dataclass(self):
+        r = FixResult(entries=[])
+        assert hasattr(r, "entries")
+        assert hasattr(r, "skip_reasons")
 
     def test_skip_reason_labels_is_dict(self):
         assert isinstance(_SKIP_REASON_LABELS, dict)
@@ -35,38 +35,38 @@ class TestFixModuleSanity:
 
 
 # ---------------------------------------------------------------------------
-# _ResultsWithMeta
+# FixResult
 # ---------------------------------------------------------------------------
 
-class TestResultsWithMeta:
-    """_ResultsWithMeta is a list with a skip_reasons dict attribute."""
+class TestFixResult:
+    """FixResult is a dataclass with entries list and skip_reasons dict."""
 
     def test_empty_init(self):
-        r = _ResultsWithMeta()
-        assert len(r) == 0
+        r = FixResult(entries=[])
+        assert len(r.entries) == 0
         assert r.skip_reasons == {}
 
     def test_init_with_data(self):
-        r = _ResultsWithMeta([1, 2, 3])
-        assert len(r) == 3
-        assert list(r) == [1, 2, 3]
+        r = FixResult(entries=[1, 2, 3])
+        assert len(r.entries) == 3
+        assert r.entries == [1, 2, 3]
         assert r.skip_reasons == {}
 
     def test_skip_reasons_independent(self):
         """Each instance should have its own skip_reasons dict (not shared)."""
-        r1 = _ResultsWithMeta()
-        r2 = _ResultsWithMeta()
+        r1 = FixResult(entries=[])
+        r2 = FixResult(entries=[])
         r1.skip_reasons["test"] = 5
         assert r2.skip_reasons == {}
 
-    def test_behaves_as_list(self):
-        r = _ResultsWithMeta([{"file": "a.ts", "removed": ["x"]}])
-        r.append({"file": "b.ts", "removed": ["y"]})
-        assert len(r) == 2
-        assert r[1]["file"] == "b.ts"
+    def test_entries_behave_as_list(self):
+        r = FixResult(entries=[{"file": "a.ts", "removed": ["x"]}])
+        r.entries.append({"file": "b.ts", "removed": ["y"]})
+        assert len(r.entries) == 2
+        assert r.entries[1]["file"] == "b.ts"
 
     def test_skip_reasons_assignable(self):
-        r = _ResultsWithMeta()
+        r = FixResult(entries=[])
         r.skip_reasons = {"rest_element": 3, "function_param": 2}
         assert r.skip_reasons["rest_element"] == 3
 
@@ -149,50 +149,6 @@ class TestResolveFixerResults:
         ]
         resolved = _resolve_fixer_results(state, results, "unused", "unused-imports")
         assert len(resolved) == 2
-
-
-# ---------------------------------------------------------------------------
-# _wrap_unused_vars_fix
-# ---------------------------------------------------------------------------
-
-class TestWrapUnusedVarsFix:
-    """_wrap_unused_vars_fix wraps a fix function to return _ResultsWithMeta."""
-
-    def test_wraps_results_and_skip_reasons(self):
-        def fake_fix(entries, *, dry_run=False):
-            results = [{"file": "a.ts", "removed": ["x"]}]
-            skip_reasons = {"rest_element": 2}
-            return results, skip_reasons
-
-        wrapped = _wrap_unused_vars_fix(fake_fix)
-        result = wrapped([{"name": "x"}], dry_run=True)
-        assert isinstance(result, _ResultsWithMeta)
-        assert len(result) == 1
-        assert result.skip_reasons == {"rest_element": 2}
-
-
-# ---------------------------------------------------------------------------
-# _wrap_debug_logs_fix
-# ---------------------------------------------------------------------------
-
-class TestWrapDebugLogsFix:
-    """_wrap_debug_logs_fix normalises 'tags' field to 'removed'."""
-
-    def test_normalises_tags_to_removed(self):
-        def fake_fix(entries, *, dry_run=False):
-            return [{"file": "a.ts", "tags": ["DEBUG", "TODO"]}]
-
-        wrapped = _wrap_debug_logs_fix(fake_fix)
-        result = wrapped([{"name": "x"}], dry_run=False)
-        assert result[0]["removed"] == ["DEBUG", "TODO"]
-
-    def test_preserves_existing_removed(self):
-        def fake_fix(entries, *, dry_run=False):
-            return [{"file": "a.ts", "removed": ["foo"]}]
-
-        wrapped = _wrap_debug_logs_fix(fake_fix)
-        result = wrapped([{"name": "x"}], dry_run=False)
-        assert result[0]["removed"] == ["foo"]
 
 
 # ---------------------------------------------------------------------------

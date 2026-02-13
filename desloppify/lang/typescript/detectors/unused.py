@@ -26,7 +26,8 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     }
     tmp_path = PROJECT_ROOT / "tsconfig.desloppify.json"
     try:
-        tmp_path.write_text(json.dumps(tmp_tsconfig, indent=2))
+        from ....utils import safe_write_text
+        safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
         result = subprocess.run(
             ["npx", "tsc", "--project", str(tmp_path), "--noEmit"],
             capture_output=True, text=True, cwd=PROJECT_ROOT,

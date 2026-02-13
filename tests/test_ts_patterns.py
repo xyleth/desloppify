@@ -90,14 +90,15 @@ class TestDetectPatternAnomalies:
         from desloppify.lang.typescript.detectors.patterns import detect_pattern_anomalies
 
         # Create 6 areas (need >= 5 for meaningful analysis)
+        # Each area is a distinct 2-level path: area{i}/sub/
         # Area 1 uses two competing tool_settings patterns (fragmentation)
-        _write(tmp_path, "src/tools/editor/main.ts", (
+        _write(tmp_path, "editor/sub/main.ts", (
             "const s = useAutoSaveSettings<Config>();\n"
             "const p = usePersistentToolState<Config>();\n"
         ))
         # Areas 2-6 use a single pattern (no fragmentation) so they're in the census
         for i in range(2, 7):
-            _write(tmp_path, f"src/tools/tool{i}/main.ts", (
+            _write(tmp_path, f"area{i}/sub/main.ts", (
                 f"const s{i} = useAutoSaveSettings<Config>();\n"
             ))
 

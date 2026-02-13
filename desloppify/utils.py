@@ -31,15 +31,63 @@ def set_exclusions(patterns: list[str]):
     _find_source_files_cached.cache_clear()
 
 
+# ── File content cache (opt-in, scan-scoped) ─────────────
+
+_file_cache: dict[str, str | None] = {}
+_cache_enabled = False
+
+
+def enable_file_cache():
+    """Enable scan-scoped file content cache."""
+    global _cache_enabled
+    _cache_enabled = True
+    _file_cache.clear()
+
+
+def disable_file_cache():
+    """Disable file content cache and free memory."""
+    global _cache_enabled
+    _cache_enabled = False
+    _file_cache.clear()
+
+
+# ── Atomic file writes ─────────────────────────────────────
+
+import tempfile
+
+
+def safe_write_text(filepath: str | Path, content: str) -> None:
+    """Atomically write text to a file using temp+rename."""
+    p = Path(filepath)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=p.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, str(p))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 # ── Cross-platform grep replacements ────────────────────────
 
 
 def _read_file_text(filepath: str) -> str | None:
-    """Read a file as text, returning None on failure."""
+    """Read a file as text, with optional caching."""
+    if _cache_enabled:
+        if filepath in _file_cache:
+            return _file_cache[filepath]
     try:
-        return Path(filepath).read_text(errors="replace")
+        content = Path(filepath).read_text(errors="replace")
     except OSError:
-        return None
+        content = None
+    if _cache_enabled:
+        _file_cache[filepath] = content
+    return content
 
 
 def grep_files(pattern: str, file_list: list[str], *,
@@ -175,7 +223,9 @@ def rel(path: str) -> str:
     try:
         return str(Path(path).resolve().relative_to(PROJECT_ROOT)).replace("\\", "/")
     except ValueError:
-        return path
+        # Path outside PROJECT_ROOT — normalize to consistent relative form
+        import os
+        return os.path.relpath(str(Path(path).resolve()), str(PROJECT_ROOT)).replace("\\", "/")
 
 
 def resolve_path(filepath: str) -> str:
@@ -298,16 +348,6 @@ def check_tool_staleness(state: dict) -> str | None:
 
 
 def get_area(filepath: str) -> str:
-    """Derive an area name from a file path for grouping structural findings."""
+    """Derive an area name from a file path (generic: first 2 path components)."""
     parts = filepath.split("/")
-    if filepath.startswith("src/tools/") and len(parts) >= 3:
-        return "/".join(parts[:3])
-    if filepath.startswith("src/shared/components/") and len(parts) > 3:
-        if not parts[3].endswith((".tsx", ".ts")):
-            return "/".join(parts[:4])
-        return "/".join(parts[:3])
-    if filepath.startswith("src/shared/") and len(parts) >= 3:
-        return "/".join(parts[:3])
-    if filepath.startswith("src/pages/") and len(parts) >= 3:
-        return "/".join(parts[:3])
     return "/".join(parts[:2]) if len(parts) > 1 else parts[0]

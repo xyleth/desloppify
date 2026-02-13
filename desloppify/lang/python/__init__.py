@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from .. import register_lang
@@ -11,7 +10,8 @@ from ..base import (DetectorPhase, LangConfig,
                     make_single_use_findings, make_cycle_findings,
                     make_orphaned_findings, make_smell_findings,
                     make_passthrough_findings, make_facade_findings,
-                    phase_dupes)
+                    phase_dupes, phase_test_coverage, phase_security,
+                    phase_subjective_review)
 from ...detectors.base import ComplexitySignal, GodRule
 from ...utils import find_py_files, log
 from ...zones import ZoneRule, Zone, COMMON_ZONE_RULES, adjust_potential, filter_entries
@@ -115,6 +115,7 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
         add_structural_signal(structural, e["file"], f"complexity score {e['score']}",
                               {"complexity_score": e["score"],
                                "complexity_signals": e["signals"]})
+        lang._complexity_map[e["file"]] = e["score"]
 
     god_entries, god_count = detect_gods(extract_py_classes(path), PY_GOD_RULES)
     for e in god_entries:
@@ -218,6 +219,27 @@ def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, i
     }
 
 
+def _phase_mutable_state(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+    from .detectors.mutable_state import detect_global_mutable_config
+    from ...state import make_finding
+    from ...zones import adjust_potential
+    entries, total_files = detect_global_mutable_config(path)
+    results = []
+    for e in entries:
+        results.append(make_finding(
+            "global_mutable_config", e["file"], e["name"],
+            tier=3, confidence=e["confidence"],
+            summary=e["summary"],
+            detail={"mutation_count": e["mutation_count"],
+                    "mutation_lines": e["mutation_lines"]},
+        ))
+    if results:
+        log(f"         global mutable config: {len(results)} findings")
+    return results, {
+        "global_mutable_config": adjust_potential(lang._zone_map, total_files),
+    }
+
+
 def _phase_dict_keys(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
     from .detectors.dict_keys import detect_dict_key_flow, detect_schema_drift
     from ...state import make_finding
@@ -257,59 +279,6 @@ def _phase_dict_keys(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str
     return results, potentials
 
 
-def _find_external_test_files(path: Path, lang_name: str) -> set[str]:
-    """Find test files in standard locations outside the scanned path."""
-    from ...utils import PROJECT_ROOT
-    extra = set()
-    for test_dir in ("tests", "test"):
-        d = PROJECT_ROOT / test_dir
-        if not d.is_dir():
-            continue
-        # Check that test_dir is not inside the scanned path
-        try:
-            d.resolve().relative_to(path.resolve())
-            continue  # test_dir is inside scanned path, zone_map already has it
-        except ValueError:
-            pass
-        ext = ".py" if lang_name == "python" else (".ts", ".tsx")
-        for root, _, files in os.walk(d):
-            for f in files:
-                if isinstance(ext, tuple):
-                    if any(f.endswith(e) for e in ext):
-                        extra.add(os.path.join(root, f))
-                elif f.endswith(ext):
-                    extra.add(os.path.join(root, f))
-    return extra
-
-
-def _phase_test_coverage(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    from ...detectors.test_coverage import detect_test_coverage
-    from ...state import make_finding
-
-    zm = lang._zone_map
-    if zm is None:
-        return [], {}
-
-    graph = lang._dep_graph or lang.build_dep_graph(path)
-    extra = _find_external_test_files(path, lang.name)
-    entries, potential = detect_test_coverage(graph, zm, lang.name,
-                                              extra_test_files=extra or None)
-    entries = filter_entries(zm, entries, "test_coverage")
-
-    results = []
-    for e in entries:
-        results.append(make_finding(
-            "test_coverage", e["file"], e.get("name", ""),
-            tier=e["tier"], confidence=e["confidence"],
-            summary=e["summary"], detail=e.get("detail", {}),
-        ))
-
-    if results:
-        log(f"         test coverage: {len(results)} findings ({potential} production files)")
-    else:
-        log(f"         test coverage: clean ({potential} production files)")
-
-    return results, {"test_coverage": potential}
 
 
 # ── Build the config ──────────────────────────────────────
@@ -331,6 +300,10 @@ def _py_extract_functions(path: Path) -> list:
 
 @register_lang("python")
 class PythonConfig(LangConfig):
+    def detect_lang_security(self, files, zone_map):
+        from .detectors.security import detect_python_security
+        return detect_python_security(files, zone_map)
+
     def __init__(self):
         from .commands import get_detect_commands
         super().__init__(
@@ -345,8 +318,11 @@ class PythonConfig(LangConfig):
                 DetectorPhase("Unused (ruff)", _phase_unused),
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
-                DetectorPhase("Test coverage", _phase_test_coverage),
+                DetectorPhase("Test coverage", phase_test_coverage),
                 DetectorPhase("Code smells", _phase_smells),
+                DetectorPhase("Mutable state", _phase_mutable_state),
+                DetectorPhase("Security", phase_security),
+                DetectorPhase("Subjective review", phase_subjective_review),
                 DetectorPhase("Dict key flow", _phase_dict_keys),
                 DetectorPhase("Duplicates", phase_dupes, slow=True),
             ],

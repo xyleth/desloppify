@@ -1,7 +1,5 @@
 """plan command: generate prioritized markdown plan from state."""
 
-from pathlib import Path
-
 from ..utils import c
 from ..cli import _state_path
 
@@ -23,8 +21,8 @@ def cmd_plan_output(args):
     output = getattr(args, "output", None)
     if output:
         try:
-            Path(output).parent.mkdir(parents=True, exist_ok=True)
-            Path(output).write_text(plan_md)
+            from ..utils import safe_write_text
+            safe_write_text(output, plan_md)
             print(c(f"Plan written to {output}", "green"))
         except OSError as e:
             print(c(f"Could not write plan to {output}: {e}", "red"))

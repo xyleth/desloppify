@@ -31,12 +31,13 @@ def test_rel_absolute_under_project_root(monkeypatch):
 
 
 def test_rel_path_outside_project_root(tmp_path, monkeypatch):
-    """Path outside PROJECT_ROOT is returned unchanged."""
+    """Path outside PROJECT_ROOT is returned as a relative path from PROJECT_ROOT."""
+    import os
     outside = str(tmp_path / "unrelated" / "file.py")
     result = rel(outside)
-    # Since the path doesn't exist, Path.resolve() won't change it in a way
-    # that makes it under PROJECT_ROOT, so it should come back as-is.
-    assert result == outside
+    # Path outside PROJECT_ROOT should be normalized to a relative path
+    expected = os.path.relpath(outside).replace("\\", "/")
+    assert result == expected
 
 
 # ── resolve_path() ───────────────────────────────────────────

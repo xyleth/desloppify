@@ -9,6 +9,37 @@ import re
 _MAX_CATCH_BODY = 1000  # max characters to scan for catch block body
 
 
+def _scan_code(text: str, start: int = 0, end: int | None = None):
+    """Yield (index, char, in_string) tuples, handling escapes correctly.
+
+    Skips escaped characters (\\x) by advancing +2 instead of +1.
+    Tracks single-quoted, double-quoted, and template literal strings.
+    Correct for \\\\\" (escaped backslash before quote) where prev_ch pattern fails.
+    """
+    i = start
+    limit = end if end is not None else len(text)
+    in_str = None
+    while i < limit:
+        ch = text[i]
+        if in_str:
+            if ch == '\\' and i + 1 < limit:
+                yield (i, ch, True)
+                i += 1
+                yield (i, text[i], True)
+                i += 1
+                continue
+            if ch == in_str:
+                in_str = None
+            yield (i, ch, in_str is not None)
+        else:
+            if ch in ("'", '"', '`'):
+                in_str = ch
+                yield (i, ch, True)
+            else:
+                yield (i, ch, False)
+        i += 1
+
+
 def _strip_ts_comments(text: str) -> str:
     """Strip // and /* */ comments while preserving strings."""
     result: list[str] = []
@@ -107,24 +138,18 @@ def _detect_async_no_await(filepath: str, content: str, lines: list[str],
         has_await = False
         for j in range(i, min(i + 200, len(lines))):
             body_line = lines[j]
-            in_str = None
-            prev_ch = ""
-            for ch in body_line:
-                if in_str:
-                    if ch == in_str and prev_ch != "\\":
-                        in_str = None
-                    prev_ch = ch
+            prev_code_ch = ""
+            for _, ch, in_s in _scan_code(body_line):
+                if in_s:
                     continue
-                if ch in "'\"`":
-                    in_str = ch
-                elif ch == '/' and prev_ch == '/':
+                if ch == '/' and prev_code_ch == '/':
                     break  # Rest of line is comment
                 elif ch == '{':
                     brace_depth += 1
                     found_open = True
                 elif ch == '}':
                     brace_depth -= 1
-                prev_ch = ch
+                prev_code_ch = ch
             if "await " in body_line or "await\n" in body_line:
                 has_await = True
             if found_open and brace_depth <= 0:
@@ -246,17 +271,10 @@ def _detect_dead_useeffects(filepath: str, lines: list[str],
         brace_depth = 0
         end = None
         for j in range(i, min(i + 30, len(lines))):
-            in_str = None
-            prev_ch = ""
-            for ch in lines[j]:
-                if in_str:
-                    if ch == in_str and prev_ch != "\\":
-                        in_str = None
-                    prev_ch = ch
+            for _, ch, in_s in _scan_code(lines[j]):
+                if in_s:
                     continue
-                if ch in "'\"`":
-                    in_str = ch
-                elif ch == "(":
+                if ch == "(":
                     paren_depth += 1
                 elif ch == ")":
                     paren_depth -= 1
@@ -267,7 +285,6 @@ def _detect_dead_useeffects(filepath: str, lines: list[str],
                     brace_depth += 1
                 elif ch == "}":
                     brace_depth -= 1
-                prev_ch = ch
             if end is not None:
                 break
 
@@ -284,25 +301,16 @@ def _detect_dead_useeffects(filepath: str, lines: list[str],
 
         depth = 0
         body_end = None
-        in_str = None
-        prev_ch = ""
-        for ci in range(brace_pos, len(text)):
-            ch = text[ci]
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for ci, ch, in_s in _scan_code(text, brace_pos):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "{":
+            if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     body_end = ci
                     break
-            prev_ch = ch
 
         if body_end is None:
             continue
@@ -330,26 +338,17 @@ def _detect_swallowed_errors(filepath: str, content: str, lines: list[str],
     for m in catch_re.finditer(content):
         brace_start = m.end() - 1
         depth = 0
-        in_str = None
-        prev_ch = ""
         body_end = None
-        for ci in range(brace_start, min(brace_start + 500, len(content))):
-            ch = content[ci]
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + 500, len(content))):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "{":
+            if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     body_end = ci
                     break
-            prev_ch = ch
 
         if body_end is None:
             continue
@@ -386,24 +385,16 @@ def _track_brace_body(lines: list[str], start_line: int, *, max_scan: int = 2000
     depth = 0
     found_open = False
     for j in range(start_line, min(start_line + max_scan, len(lines))):
-        in_str = None
-        prev_ch = ""
-        for ch in lines[j]:
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for _, ch, in_s in _scan_code(lines[j]):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "{":
+            if ch == "{":
                 depth += 1
                 found_open = True
             elif ch == "}":
                 depth -= 1
                 if found_open and depth == 0:
                     return j
-            prev_ch = ch
     return None
 
 
@@ -586,26 +577,17 @@ def _detect_catch_return_default(filepath: str, content: str,
     for m in catch_re.finditer(content):
         brace_start = m.end() - 1
         depth = 0
-        in_str = None
-        prev_ch = ""
         body_end = None
-        for ci in range(brace_start, min(brace_start + _MAX_CATCH_BODY, len(content))):
-            ch = content[ci]
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + _MAX_CATCH_BODY, len(content))):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "{":
+            if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     body_end = ci
                     break
-            prev_ch = ch
 
         if body_end is None:
             continue
@@ -620,25 +602,16 @@ def _detect_catch_return_default(filepath: str, content: str,
         obj_start = body.find("{", return_obj.start())
         obj_depth = 0
         obj_end = None
-        ois = None
-        prev = ""
-        for ci in range(obj_start, len(body)):
-            ch = body[ci]
-            if ois:
-                if ch == ois and prev != "\\":
-                    ois = None
-                prev = ch
+        for ci, ch, in_s in _scan_code(body, obj_start):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                ois = ch
-            elif ch == "{":
+            if ch == "{":
                 obj_depth += 1
             elif ch == "}":
                 obj_depth -= 1
                 if obj_depth == 0:
                     obj_end = ci
                     break
-            prev = ch
 
         if obj_end is None:
             continue
@@ -670,26 +643,17 @@ def _detect_switch_no_default(filepath: str, content: str,
     for m in switch_re.finditer(content):
         brace_start = m.end() - 1
         depth = 0
-        in_str = None
-        prev_ch = ""
         body_end = None
-        for ci in range(brace_start, min(brace_start + 5000, len(content))):
-            ch = content[ci]
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for ci, ch, in_s in _scan_code(content, brace_start, min(brace_start + 5000, len(content))):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "{":
+            if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     body_end = ci
                     break
-            prev_ch = ch
 
         if body_end is None:
             continue

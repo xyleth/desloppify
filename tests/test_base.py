@@ -5,7 +5,6 @@ from desloppify.detectors.base import (
     ComplexitySignal,
     FunctionInfo,
     GodRule,
-    SmellRule,
 )
 
 
@@ -156,29 +155,3 @@ def test_god_rule_extract_callable():
                  extract=lambda c: len(c.methods), threshold=20)
     assert gr.extract(ci) == 50
     assert gr.extract(ci) >= gr.threshold
-
-
-# ── SmellRule ────────────────────────────────────────────────
-
-
-def test_smell_rule_construction():
-    """SmellRule stores id, label, pattern, severity."""
-    sr = SmellRule(id="todo", label="TODO comment", pattern=r"#\s*TODO", severity="low")
-    assert sr.id == "todo"
-    assert sr.label == "TODO comment"
-    assert sr.pattern == r"#\s*TODO"
-    assert sr.severity == "low"
-
-
-def test_smell_rule_defaults():
-    """SmellRule defaults: severity=medium, pattern=None."""
-    sr = SmellRule(id="smell1", label="A smell")
-    assert sr.severity == "medium"
-    assert sr.pattern is None
-
-
-def test_smell_rule_no_pattern():
-    """SmellRule with None pattern indicates multi-line analysis."""
-    sr = SmellRule(id="multi", label="Multi-line smell", pattern=None, severity="high")
-    assert sr.pattern is None
-    assert sr.severity == "high"

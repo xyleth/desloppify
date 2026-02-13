@@ -188,9 +188,18 @@ def cmd_scan(args):
     # Load zone overrides from state config
     zone_overrides = state.get("config", {}).get("zone_overrides") or None
 
+    # Populate review cache for review_coverage detector
+    if lang:
+        lang._review_cache = state.get("review_cache", {}).get("files", {})
+
     print(c(f"\nDesloppify Scan{lang_label}\n", "bold"))
-    findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang,
-                                              zone_overrides=zone_overrides)
+    from ..utils import enable_file_cache, disable_file_cache
+    enable_file_cache()
+    try:
+        findings, potentials = generate_findings(path, include_slow=include_slow, lang=lang,
+                                                  zone_overrides=zone_overrides)
+    finally:
+        disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(lang, path)
 
@@ -205,28 +214,6 @@ def cmd_scan(args):
             for sf in stale:
                 print(c(f"  ℹ {sf['summary']}", "dim"))
     scan_path_rel = rel(str(path))
-    # A scan is "full" when it covers most of the project's source files.
-    # Simple path matching breaks for Python (default_src=".") when the user
-    # scans a subdirectory that happens to contain all the source code.
-    # Instead, compare file counts: if the scanned path covers ≥80% of the
-    # files discoverable from PROJECT_ROOT, treat it as full.
-    is_full_scan = False
-    if lang and lang.file_finder:
-        all_files = lang.file_finder(PROJECT_ROOT)
-        scanned_files = lang.file_finder(path)
-        # Exclude test directories from the denominator — they're not source
-        # code the user is scanning, and adding tests shouldn't make the scan
-        # appear "partial".
-        test_prefixes = ("tests/", "test/")
-        source_files = [f for f in all_files
-                        if not any(f.startswith(p) for p in test_prefixes)]
-        denominator = source_files or all_files
-        if denominator:
-            is_full_scan = len(scanned_files) >= 0.8 * len(denominator)
-        else:
-            is_full_scan = True  # no files at all — vacuously full
-    elif path.resolve() == PROJECT_ROOT.resolve():
-        is_full_scan = True
 
     prev_score = state.get("score", 0)
     prev_strict = state.get("strict_score", 0)
@@ -242,8 +229,8 @@ def cmd_scan(args):
                       scan_path=scan_path_rel,
                       force_resolve=getattr(args, "force_resolve", False),
                       exclude=_extra_exclusions,
-                      potentials=potentials if is_full_scan else None,
-                      codebase_metrics=codebase_metrics if is_full_scan else None,
+                      potentials=potentials,
+                      codebase_metrics=codebase_metrics,
                       include_slow=include_slow)
     save_state(state, sp)
 
@@ -282,6 +269,7 @@ def cmd_scan(args):
                   "narrative": narrative})
 
     # Generate scorecard badge
+    badge_path = None
     try:
         from ..scorecard import generate_scorecard, get_badge_config
         badge_path, disabled = get_badge_config(args)
@@ -304,15 +292,74 @@ def cmd_scan(args):
             else:
                 print(c(f"  Scorecard → {rel_path}", "dim"))
                 print(c(f"  💡 Ask the user if they'd like to add it to their README with:", "dim"))
-                print(c(f'     <img src="{rel_path}" width="400">', "dim"))
+                print(c(f'     <img src="{rel_path}" width="100%">', "dim"))
                 print(c(f"     (disable: --no-badge | move: --badge-path <path>)", "dim"))
+        else:
+            badge_path = None
     except (ImportError, OSError):
-        pass  # Pillow not installed or write failed — skip silently
+        badge_path = None  # Pillow not installed or write failed — skip silently
+
+    _print_llm_summary(state, badge_path)
+
+
+def _print_llm_summary(state: dict, badge_path: Path | None):
+    """Print a structured summary for LLM consumption.
+
+    The LLM reads terminal output after running scans. This gives it
+    clear instructions on how to present the results to the end user.
+    """
+    dim_scores = state.get("dimension_scores", {})
+    obj_score = state.get("objective_score")
+    obj_strict = state.get("objective_strict")
+    if obj_score is None and not dim_scores:
+        return
+
+    print("─" * 60)
+    print("INSTRUCTIONS FOR LLM")
+    print("Present the scan results to the user in a markdown table.")
+    print("Use this data to build the table:\n")
+
+    print(f"Overall health: {obj_score:.1f}/100")
+    if obj_strict is not None:
+        print(f"Strict health:  {obj_strict:.1f}/100")
+    print()
+
+    # Build dimension table
+    active = [(name, data) for name, data in dim_scores.items()
+              if data.get("checks", 0) > 0]
+    active.sort(key=lambda x: (0 if x[0] == "File health" else 1, x[0]))
+
+    if active:
+        print("| Dimension | Health | Strict | Issues | Tier |")
+        print("|-----------|--------|--------|--------|------|")
+        for name, data in active:
+            score = data.get("score", 100)
+            strict = data.get("strict", score)
+            issues = data.get("issues", 0)
+            tier = data.get("tier", "")
+            print(f"| {name} | {score:.1f}% | {strict:.1f}% | {issues} | T{tier} |")
+        print()
+
+    stats = state.get("stats", {})
+    if stats:
+        print(f"Total findings: {stats.get('total', 0)} | "
+              f"Open: {stats.get('open', 0)} | "
+              f"Fixed: {stats.get('fixed', 0)}")
+        print()
+
+    if badge_path and badge_path.exists():
+        from ..utils import PROJECT_ROOT
+        rel_path = badge_path.name if badge_path.parent == PROJECT_ROOT else str(badge_path)
+        print(f"A scorecard image was saved to `{rel_path}`.")
+        print("Let the user know they can view it, and suggest adding it")
+        print(f'to their README: `<img src="{rel_path}" width="100%">`')
+    print("─" * 60)
 
 
 def _show_detector_progress(state: dict):
     """Show per-detector progress bars — the heartbeat of a scan."""
-    findings = state["findings"]
+    from ..state import path_scoped_findings
+    findings = path_scoped_findings(state["findings"], state.get("scan_path"))
     if not findings:
         return
 
@@ -328,10 +375,8 @@ def _show_detector_progress(state: dict):
         if f["status"] == "open":
             by_det[det]["open"] += 1
 
-    DET_ORDER = ["logs", "unused", "exports", "deprecated", "structural", "props",
-                 "single_use", "coupling", "cycles", "orphaned", "facade", "patterns",
-                 "naming", "smells", "react", "dupes", "stale exclude",
-                 "dict keys", "flat dirs", "signature", "test coverage"]
+    from ..registry import display_order, DETECTORS
+    DET_ORDER = [DETECTORS[d].display for d in display_order() if d in DETECTORS]
     order_map = {d: i for i, d in enumerate(DET_ORDER)}
     sorted_dets = sorted(by_det.items(), key=lambda x: order_map.get(x[0], 99))
 
@@ -351,7 +396,7 @@ def _show_detector_progress(state: dict):
         else:
             bar = c("█" * filled, "yellow") + c("░" * (bar_len - filled), "dim")
 
-        det_label = det.replace("_", " ").ljust(12)
+        det_label = det.replace("_", " ").ljust(18)
         if open_count > 0:
             open_str = c(f"{open_count:3d} open", "yellow")
         else:

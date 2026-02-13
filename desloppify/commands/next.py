@@ -1,7 +1,6 @@
 """next command: show next highest-priority open finding(s)."""
 
 import json
-from pathlib import Path
 
 from ..utils import c
 from ..cli import _state_path, _write_query
@@ -50,8 +49,8 @@ def cmd_next(args):
                    "file": f["file"], "summary": f["summary"], "detail": f.get("detail", {})}
                   for f in items]
         try:
-            Path(output_file).parent.mkdir(parents=True, exist_ok=True)
-            Path(output_file).write_text(json.dumps(output, indent=2) + "\n")
+            from ..utils import safe_write_text
+            safe_write_text(output_file, json.dumps(output, indent=2) + "\n")
             print(c(f"Wrote {len(items)} items to {output_file}", "green"))
         except OSError as e:
             print(c(f"Could not write to {output_file}: {e}", "red"))

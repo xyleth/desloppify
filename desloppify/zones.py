@@ -198,14 +198,16 @@ ZONE_POLICIES: dict[Zone, ZonePolicy] = {
         skip_detectors={"unused", "logs", "exports", "deprecated", "structural",
                         "props", "smells", "react", "dupes", "single_use",
                         "orphaned", "coupling", "facade", "naming", "patterns",
-                        "cycles", "flat_dirs", "dict_keys", "test_coverage"},
+                        "cycles", "flat_dirs", "dict_keys", "test_coverage",
+                        "security"},
         exclude_from_score=True,
     ),
     Zone.VENDOR: ZonePolicy(
         skip_detectors={"unused", "logs", "exports", "deprecated", "structural",
                         "props", "smells", "react", "dupes", "single_use",
                         "orphaned", "coupling", "facade", "naming", "patterns",
-                        "cycles", "flat_dirs", "dict_keys", "test_coverage"},
+                        "cycles", "flat_dirs", "dict_keys", "test_coverage",
+                        "security"},
         exclude_from_score=True,
     ),
     Zone.SCRIPT: ZonePolicy(

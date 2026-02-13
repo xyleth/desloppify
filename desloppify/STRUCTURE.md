@@ -13,7 +13,7 @@ desloppify/
 ├── visualize.py        # tree + viz commands
 │
 ├── detectors/          # Layer 1: Generic algorithms (zero language knowledge)
-│   ├── base.py         # Shared data types: FunctionInfo, ClassInfo, ComplexitySignal, GodRule, SmellRule
+│   ├── base.py         # Shared data types: FunctionInfo, ClassInfo, ComplexitySignal, GodRule
 │   ├── dupes.py        # detect_duplicates(functions, threshold) → pairs
 │   ├── gods.py         # detect_gods(classes, rules) → god entries
 │   ├── complexity.py   # detect_complexity(path, signals, file_finder) → scored files

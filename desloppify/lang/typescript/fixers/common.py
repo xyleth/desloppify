@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, c, rel
+from ..detectors._smell_helpers import _scan_code
 
 
 def find_balanced_end(lines: list[str], start: int, *, track: str = "parens",
@@ -29,18 +30,10 @@ def find_balanced_end(lines: list[str], start: int, *, track: str = "parens",
     bracket_depth = 0
 
     for idx in range(start, min(start + max_lines, len(lines))):
-        line = lines[idx]
-        in_str = None
-        prev_ch = ""
-        for ch in line:
-            if in_str:
-                if ch == in_str and prev_ch != "\\":
-                    in_str = None
-                prev_ch = ch
+        for _, ch, in_s in _scan_code(lines[idx]):
+            if in_s:
                 continue
-            if ch in "'\"`":
-                in_str = ch
-            elif ch == "(":
+            if ch == "(":
                 paren_depth += 1
             elif ch == ")":
                 paren_depth -= 1
@@ -58,7 +51,6 @@ def find_balanced_end(lines: list[str], start: int, *, track: str = "parens",
                 bracket_depth += 1
             elif ch == "]":
                 bracket_depth -= 1
-            prev_ch = ch
     return None
 
 
@@ -82,24 +74,15 @@ def extract_body_between_braces(text: str, search_after: str = "") -> str | None
         return None
 
     depth = 0
-    in_str = None
-    prev_ch = ""
-    for i in range(brace_pos, len(text)):
-        ch = text[i]
-        if in_str:
-            if ch == in_str and prev_ch != "\\":
-                in_str = None
-            prev_ch = ch
+    for i, ch, in_s in _scan_code(text, brace_pos):
+        if in_s:
             continue
-        if ch in "'\"`":
-            in_str = ch
-        elif ch == "{":
+        if ch == "{":
             depth += 1
         elif ch == "}":
             depth -= 1
             if depth == 0:
                 return text[brace_pos + 1:i]
-        prev_ch = ch
     return None
 
 

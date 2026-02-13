@@ -19,8 +19,8 @@ def _write_query(data: dict):
     instead of parsing terminal output.
     """
     try:
-        QUERY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        QUERY_FILE.write_text(json.dumps(data, indent=2, default=_json_default) + "\n")
+        from .utils import safe_write_text
+        safe_write_text(QUERY_FILE, json.dumps(data, indent=2, default=_json_default) + "\n")
         print(f"  \u2192 query.json updated", file=sys.stderr)
     except OSError as e:
         print(f"  \u26a0 Could not write query.json: {e}", file=sys.stderr)
@@ -58,12 +58,9 @@ def _resolve_lang(args):
         sys.exit(1)
 
 
-DETECTOR_NAMES = [
-    "logs", "unused", "exports", "deprecated", "large", "complexity",
-    "gods", "single_use", "props", "passthrough", "concerns", "deps", "dupes", "smells",
-    "coupling", "patterns", "naming", "cycles", "orphaned", "react", "facade",
-    "flat_dirs", "dict_keys", "signature",
-]
+from .registry import detector_names as _detector_names
+
+DETECTOR_NAMES = _detector_names()
 
 USAGE_EXAMPLES = """
 workflow:
@@ -75,6 +72,8 @@ workflow:
   ignore <pattern>              Suppress findings matching a pattern
   zone show                     Show zone classifications for all files
   zone set <file> <zone>        Override zone for a file
+  review --prepare              Prepare files for AI design review
+  review --import FILE          Import review findings from JSON
   plan                          Generate prioritized markdown plan
 
 examples:
@@ -197,6 +196,22 @@ def create_parser() -> argparse.ArgumentParser:
     p_move.add_argument("dest", type=str, help="Destination path (file or directory)")
     p_move.add_argument("--dry-run", action="store_true", help="Show changes without modifying files")
 
+    p_review = sub.add_parser("review", help="Prepare or import subjective code review")
+    p_review.add_argument("--path", type=str, default=None)
+    p_review.add_argument("--state", type=str, default=None)
+    p_review.add_argument("--prepare", action="store_true",
+                          help="Prepare review data (output to query.json)")
+    p_review.add_argument("--import", dest="import_file", type=str, metavar="FILE",
+                          help="Import review findings from JSON file")
+    p_review.add_argument("--max-age", type=int, default=30,
+                          help="Staleness threshold in days (default: 30)")
+    p_review.add_argument("--max-files", type=int, default=50,
+                          help="Maximum files to evaluate (default: 50)")
+    p_review.add_argument("--refresh", action="store_true",
+                          help="Force re-evaluate everything (ignore cache)")
+    p_review.add_argument("--dimensions", type=str, default=None,
+                          help="Comma-separated dimensions to evaluate")
+
     p_zone = sub.add_parser("zone", help="Show/set/clear zone classifications")
     p_zone.add_argument("--path", type=str, default=None)
     p_zone.add_argument("--state", type=str, default=None)
@@ -290,6 +305,9 @@ def main():
     elif args.command == "zone":
         from .commands.zone_cmd import cmd_zone
         commands["zone"] = cmd_zone
+    elif args.command == "review":
+        from .commands.review_cmd import cmd_review
+        commands["review"] = cmd_review
 
     try:
         commands[args.command](args)

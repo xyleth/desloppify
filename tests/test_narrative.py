@@ -764,6 +764,119 @@ class TestComputeReminders:
         # Updated should have incremented
         assert updated["rescan_needed"] == 2
 
+    def test_feedback_nudge_after_two_scans(self):
+        """General feedback nudge appears after 2+ scans with command=scan."""
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+        }
+        reminders, _ = _compute_reminders(
+            state, "python", "middle_grind", {},
+            [], {}, {}, "scan",
+        )
+        nudge_types = [r["type"] for r in reminders if r["type"] == "feedback_nudge"]
+        assert len(nudge_types) == 1
+        msg = next(r["message"] for r in reminders if r["type"] == "feedback_nudge")
+        assert "issue" in msg.lower()
+
+    def test_no_feedback_nudge_on_first_scan(self):
+        """No feedback nudge on the very first scan."""
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 50.0}],
+        }
+        reminders, _ = _compute_reminders(
+            state, "python", "first_scan", {},
+            [], {}, {}, "scan",
+        )
+        nudge_types = [r["type"] for r in reminders if r["type"] == "feedback_nudge"]
+        assert len(nudge_types) == 0
+
+    def test_no_feedback_nudge_on_non_scan_command(self):
+        """Feedback nudge only fires on scan, not fix/show/next."""
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+        }
+        for cmd in ("fix", "resolve", "show", "next", None):
+            reminders, _ = _compute_reminders(
+                state, "python", "middle_grind", {},
+                [], {}, {}, cmd,
+            )
+            nudge_types = [r["type"] for r in reminders if r["type"] == "feedback_nudge"]
+            assert len(nudge_types) == 0, f"nudge fired for command={cmd!r}"
+
+    def test_feedback_nudge_stagnation_variant(self):
+        """Stagnation phase triggers the stagnation-specific message."""
+        state = {
+            "objective_strict": 70.0,
+            "scan_history": [{"objective_strict": 70.0}] * 4,
+        }
+        reminders, _ = _compute_reminders(
+            state, "python", "stagnation", {},
+            [], {}, {}, "scan",
+        )
+        nudge = next((r for r in reminders if r["type"] == "feedback_nudge"), None)
+        assert nudge is not None
+        assert "plateau" in nudge["message"].lower()
+
+    def test_feedback_nudge_fp_variant(self):
+        """High FP rate triggers the FP-specific message."""
+        # Need 5+ findings per (detector, zone) with >30% FP rate
+        findings = {}
+        for i in range(4):
+            findings[str(i)] = _finding("unused", status="open")
+        for i in range(4, 7):
+            findings[str(i)] = _finding("unused", status="false_positive")
+        # 7 total, 3 FP → 43% FP rate
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "findings": findings,
+        }
+        reminders, _ = _compute_reminders(
+            state, "python", "middle_grind", {},
+            [], {}, {}, "scan",
+        )
+        nudge = next((r for r in reminders if r["type"] == "feedback_nudge"), None)
+        assert nudge is not None
+        assert "false-positive" in nudge["message"].lower()
+
+    def test_feedback_nudge_shared_decay(self):
+        """All variants share one decay counter — 3 total then suppressed."""
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+            "reminder_history": {"feedback_nudge": 3},
+        }
+        # Generic variant
+        reminders, _ = _compute_reminders(
+            state, "python", "middle_grind", {},
+            [], {}, {}, "scan",
+        )
+        assert not any(r["type"] == "feedback_nudge" for r in reminders)
+        # Stagnation variant — still suppressed because same key
+        reminders, _ = _compute_reminders(
+            state, "python", "stagnation", {},
+            [], {}, {}, "scan",
+        )
+        assert not any(r["type"] == "feedback_nudge" for r in reminders)
+
+    def test_feedback_nudge_contains_url(self):
+        """Feedback nudge message includes the issue tracker URL."""
+        from desloppify.narrative import _FEEDBACK_URL
+        state = {
+            "objective_strict": 50.0,
+            "scan_history": [{"objective_strict": 45.0}, {"objective_strict": 50.0}],
+        }
+        reminders, _ = _compute_reminders(
+            state, "python", "middle_grind", {},
+            [], {}, {}, "scan",
+        )
+        nudge = next((r for r in reminders if r["type"] == "feedback_nudge"), None)
+        assert nudge is not None
+        assert _FEEDBACK_URL in nudge["message"]
+
 
 # ===================================================================
 # _compute_headline

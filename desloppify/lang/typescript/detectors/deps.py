@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from ....utils import PROJECT_ROOT, SRC_PATH, c, grep_files, print_table, rel, resolve_path
+from ....utils import PROJECT_ROOT, c, grep_files, print_table, rel, resolve_path
 from ....detectors.graph import detect_cycles, get_coupling_score, finalize_graph
 
 # Extensions for framework files whose imports should be included in the graph.

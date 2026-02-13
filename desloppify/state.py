@@ -1,5 +1,7 @@
 """Persistent state management for desloppify findings (.desloppify/state.json)."""
 
+from __future__ import annotations
+
 import fnmatch
 import json
 import os
@@ -7,9 +9,30 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 from .scoring import TIER_WEIGHTS
 from .utils import PROJECT_ROOT, rel, matches_exclusion
+
+
+class Finding(TypedDict):
+    """The central data structure — a normalized finding from any detector."""
+    id: str
+    detector: str
+    file: str
+    tier: int              # 1-4
+    confidence: str        # "high" | "medium" | "low"
+    summary: str
+    detail: dict
+    status: str            # "open" | "resolved" | "wontfix" | "false_positive"
+    note: str | None
+    first_seen: str
+    last_seen: str
+    resolved_at: str | None
+    reopen_count: int
+    # Stamped post-creation in plan.py:
+    lang: NotRequired[str]
+    zone: NotRequired[str]
 
 STATE_DIR = PROJECT_ROOT / ".desloppify"
 STATE_FILE = STATE_DIR / "state.json"
@@ -83,7 +106,7 @@ def _json_default(obj):
 
 def save_state(state: dict, path: Path | None = None):
     """Recompute stats/score and save to disk atomically."""
-    _recompute_stats(state)
+    _recompute_stats(state, scan_path=state.get("scan_path"))
     p = path or STATE_FILE
     p.parent.mkdir(parents=True, exist_ok=True)
 
@@ -171,9 +194,18 @@ def _update_objective_health(state: dict, findings: dict):
     state["objective_strict"] = round(compute_objective_score(ss), 1)
 
 
-def _recompute_stats(state: dict):
+def path_scoped_findings(findings: dict, scan_path: str | None) -> dict:
+    """Filter findings to those within the given scan path."""
+    if not scan_path or scan_path == ".":
+        return findings
+    prefix = scan_path.rstrip("/") + "/"
+    return {k: v for k, v in findings.items()
+            if v.get("file", "").startswith(prefix) or v.get("file") == scan_path}
+
+
+def _recompute_stats(state: dict, scan_path: str | None = None):
     """Recompute stats, progress scores, and objective health scores from findings."""
-    findings = state["findings"]
+    findings = path_scoped_findings(state["findings"], scan_path)
     counters, tier_stats = _count_findings(findings)
     score, strict_score = _weighted_progress(findings)
     state["stats"] = {
@@ -217,7 +249,7 @@ def add_ignore(state: dict, pattern: str) -> int:
 
 def make_finding(detector: str, file: str, name: str, *,
                  tier: int, confidence: str, summary: str,
-                 detail: dict | None = None) -> dict:
+                 detail: dict | None = None) -> Finding:
     """Create a normalized finding dict with a stable ID."""
     rfile = rel(file)
     fid = f"{detector}::{rfile}::{name}" if name else f"{detector}::{rfile}"
@@ -250,8 +282,14 @@ def _find_suspect_detectors(
             det = f.get("detector", "unknown")
             prev[det] = prev.get(det, 0) + 1
 
+    # review is import-only (not a scan detector) — always protect from auto-resolve
+    _IMPORT_ONLY_DETECTORS = {"review"}
+
     suspect = set()
     for det, n in prev.items():
+        if det in _IMPORT_ONLY_DETECTORS:
+            suspect.add(det)
+            continue
         if current_by_detector.get(det, 0) > 0:
             continue  # Detector produced findings — not suspect
         if ran_detectors is not None and det in ran_detectors:
@@ -275,7 +313,7 @@ def _auto_resolve_disappeared(
             continue
         if lang and old.get("lang") and old["lang"] != lang:
             skip_lang += 1; continue
-        if scan_path and not old["file"].startswith(scan_path.rstrip("/") + "/") and old["file"] != scan_path:
+        if scan_path and scan_path != "." and not old["file"].startswith(scan_path.rstrip("/") + "/") and old["file"] != scan_path:
             skip_path += 1; continue
         if exclude and any(matches_exclusion(old["file"], ex) for ex in exclude):
             continue
@@ -346,18 +384,21 @@ def merge_scan(state: dict, current_findings: list[dict], *,
     if lang:
         state.setdefault("scan_completeness", {})[lang] = "full" if include_slow else "fast"
 
+    state["scan_path"] = scan_path
     existing = state["findings"]
     ignore = state.get("config", {}).get("ignore", [])
     current_ids, new_count, reopened_count, current_by_detector = _upsert_findings(
         existing, current_findings, ignore, now, lang=lang)
-    # Detectors that appear in potentials actually ran — trust their 0-finding results
-    ran_detectors = set(potentials.keys()) if potentials else None
+    # Detectors that appear in potentials actually ran — trust their 0-finding results.
+    # Use `is not None` (not truthiness) so an empty dict {} still means "potentials
+    # were provided" — prevents marking all detectors as suspect on empty scans.
+    ran_detectors = set(potentials.keys()) if potentials is not None else None
     suspect_detectors = _find_suspect_detectors(
         existing, current_by_detector, force_resolve, ran_detectors)
     auto_resolved, skipped_lang, skipped_path = _auto_resolve_disappeared(
         existing, current_ids, suspect_detectors, now,
         lang=lang, scan_path=scan_path, exclude=exclude)
-    _recompute_stats(state)
+    _recompute_stats(state, scan_path=scan_path)
 
     # Append scan history entry for trajectory tracking
     history = state.setdefault("scan_history", [])
@@ -416,5 +457,5 @@ def resolve_findings(state: dict, pattern: str, status: str,
     for f in match_findings(state, pattern, status_filter="open"):
         f.update(status=status, note=note, resolved_at=now)
         resolved.append(f["id"])
-    _recompute_stats(state)
+    _recompute_stats(state, scan_path=state.get("scan_path"))
     return resolved

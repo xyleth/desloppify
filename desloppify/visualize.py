@@ -129,8 +129,8 @@ def generate_visualization(path: Path, state: dict | None = None,
 
     if output:
         try:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(html)
+            from .utils import safe_write_text
+            safe_write_text(output, html)
         except OSError as e:
             import sys
             print(f"  \u26a0 Could not write visualization: {e}", file=sys.stderr)

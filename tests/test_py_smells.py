@@ -621,3 +621,172 @@ class TestOutputStructure:
         order = {"high": 0, "medium": 1, "low": 2}
         ranks = [order[s] for s in severities]
         assert ranks == sorted(ranks)
+
+
+# ── #48: lost_exception_context ───────────────────────────
+
+
+class TestLostExceptionContext:
+    def test_raise_without_from(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def risky():
+                try:
+                    open("f")
+                except FileNotFoundError as e:
+                    raise ValueError("bad")
+        """)
+        entries, _ = detect_smells(path)
+        assert "lost_exception_context" in _smell_ids(entries)
+
+    def test_raise_with_from_ok(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def risky():
+                try:
+                    open("f")
+                except FileNotFoundError as e:
+                    raise ValueError("bad") from e
+        """)
+        entries, _ = detect_smells(path)
+        assert "lost_exception_context" not in _smell_ids(entries)
+
+    def test_bare_raise_ok(self, tmp_path):
+        """Bare raise (re-raise) preserves the chain implicitly."""
+        path = _write_py(tmp_path, """\
+            def risky():
+                try:
+                    open("f")
+                except FileNotFoundError:
+                    raise
+        """)
+        entries, _ = detect_smells(path)
+        assert "lost_exception_context" not in _smell_ids(entries)
+
+    def test_raise_from_none_ok(self, tmp_path):
+        """raise X from None is intentional chain suppression — not flagged."""
+        path = _write_py(tmp_path, """\
+            def risky():
+                try:
+                    open("f")
+                except FileNotFoundError:
+                    raise ValueError("bad") from None
+        """)
+        entries, _ = detect_smells(path)
+        assert "lost_exception_context" not in _smell_ids(entries)
+
+
+# ── #49: vestigial_parameter ──────────────────────────────
+
+
+class TestVestigialParameter:
+    def test_unused_comment_detected(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def process(
+                data,
+                legacy_mode=False,  # unused, kept for backward compat
+            ):
+                return data
+        """)
+        entries, _ = detect_smells(path)
+        assert "vestigial_parameter" in _smell_ids(entries)
+
+    def test_deprecated_comment_detected(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def fetch(url, timeout=30):  # deprecated, no longer used
+                return url
+        """)
+        entries, _ = detect_smells(path)
+        assert "vestigial_parameter" in _smell_ids(entries)
+
+    def test_normal_comment_ok(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def fetch(url, timeout=30):  # seconds
+                return url
+        """)
+        entries, _ = detect_smells(path)
+        assert "vestigial_parameter" not in _smell_ids(entries)
+
+
+# ── #49: noop_function ────────────────────────────────────
+
+
+class TestNoopFunction:
+    def test_noop_detected(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def process(data):
+                if not data:
+                    return
+                logger.info("processing")
+                print("done")
+                return
+        """)
+        entries, _ = detect_smells(path)
+        assert "noop_function" in _smell_ids(entries)
+
+    def test_real_function_ok(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            def process(data):
+                result = transform(data)
+                save(result)
+                return result
+        """)
+        entries, _ = detect_smells(path)
+        assert "noop_function" not in _smell_ids(entries)
+
+    def test_short_function_not_flagged(self, tmp_path):
+        """Functions with < 3 statements (after docstring) are too short to flag."""
+        path = _write_py(tmp_path, """\
+            def stub():
+                pass
+                return
+        """)
+        entries, _ = detect_smells(path)
+        assert "noop_function" not in _smell_ids(entries)
+
+    def test_init_not_flagged(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            class Foo:
+                def __init__(self):
+                    pass
+                    return
+                    return
+        """)
+        entries, _ = detect_smells(path)
+        assert "noop_function" not in _smell_ids(entries)
+
+    def test_decorated_not_flagged(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            @abstractmethod
+            def interface(self):
+                pass
+                return
+                return
+        """)
+        entries, _ = detect_smells(path)
+        assert "noop_function" not in _smell_ids(entries)
+
+
+# ── #49: stderr_traceback ─────────────────────────────────
+
+
+class TestStderrTraceback:
+    def test_print_exc_detected(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            import traceback
+            try:
+                risky()
+            except Exception:
+                traceback.print_exc()
+        """)
+        entries, _ = detect_smells(path)
+        assert "stderr_traceback" in _smell_ids(entries)
+
+    def test_no_traceback_ok(self, tmp_path):
+        path = _write_py(tmp_path, """\
+            import logging
+            try:
+                risky()
+            except Exception:
+                logging.exception("failed")
+        """)
+        entries, _ = detect_smells(path)
+        assert "stderr_traceback" not in _smell_ids(entries)

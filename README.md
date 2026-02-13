@@ -4,7 +4,7 @@ Codebase health scanner. Detects cruft (dead code, duplication, complexity, smel
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo - the strict score includes the ones you've ignored that haven't been solved:
 
-<img src="scorecard.png" width="89%">
+<img src="scorecard.png" width="100%">
 
 ## For your agent's consideration...
 

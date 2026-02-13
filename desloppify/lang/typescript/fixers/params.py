@@ -86,7 +86,8 @@ def fix_unused_params(entries: list[dict], *, dry_run: bool = False) -> list[dic
                     "lines_removed": 0,
                 })
                 if not dry_run:
-                    p.write_text(new_content)
+                    from ....utils import safe_write_text
+                    safe_write_text(filepath, new_content)
         except (OSError, UnicodeDecodeError) as ex:
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .enums import Confidence, Tier
 from .zones import EXCLUDED_ZONE_VALUES
 
 
@@ -27,15 +28,17 @@ DIMENSIONS = [
     Dimension("Component design",    3, ["props"]),
     Dimension("Coupling",            3, ["single_use", "coupling"]),
     Dimension("Organization",        3, ["orphaned", "flat_dirs", "naming", "facade", "stale_exclude"]),
-    Dimension("Code quality",        3, ["smells", "react", "dict_keys"]),
+    Dimension("Code quality",        3, ["smells", "react", "dict_keys", "global_mutable_config"]),
     Dimension("Duplication",         3, ["dupes"]),
     Dimension("Pattern consistency", 3, ["patterns"]),
     Dimension("Dependency health",   4, ["cycles"]),
     Dimension("Test health",         4, ["test_coverage"]),
+    Dimension("Security",            4, ["security"]),
+    Dimension("Design quality",      4, ["review", "subjective_review"]),
 ]
 
-TIER_WEIGHTS = {1: 1, 2: 2, 3: 3, 4: 4}
-CONFIDENCE_WEIGHTS = {"high": 1.0, "medium": 0.7, "low": 0.3}
+TIER_WEIGHTS = {Tier.AUTO_FIX: 1, Tier.QUICK_FIX: 2, Tier.JUDGMENT: 3, Tier.MAJOR_REFACTOR: 4}
+CONFIDENCE_WEIGHTS = {Confidence.HIGH: 1.0, Confidence.MEDIUM: 0.7, Confidence.LOW: 0.3}
 
 # Minimum checks for full dimension weight — below this, weight is dampened
 # proportionally. Prevents small-sample dimensions from swinging the overall score.
@@ -43,10 +46,13 @@ MIN_SAMPLE = 200
 
 # Detectors where potential = file count but findings are per-(file, sub-type).
 # Per-file weighted failures are capped at 1.0 to match the file-based denominator.
-_FILE_BASED_DETECTORS = {"smells", "dict_keys", "test_coverage"}
+_FILE_BASED_DETECTORS = {"smells", "dict_keys", "test_coverage", "security", "review", "subjective_review"}
 
 # Zones excluded from scoring (imported from zones.py canonical source)
 _EXCLUDED_ZONES = EXCLUDED_ZONE_VALUES
+
+# Security findings are only excluded in generated/vendor zones (secrets in tests are real risks)
+_SECURITY_EXCLUDED_ZONES = {"generated", "vendor"}
 
 # Statuses that count as failures
 _LENIENT_FAILURES = {"open"}
@@ -82,27 +88,46 @@ def _detector_pass_rate(
 
     failure_set = _STRICT_FAILURES if strict else _LENIENT_FAILURES
     issue_count = 0
+    excluded_zones = _SECURITY_EXCLUDED_ZONES if detector == "security" else _EXCLUDED_ZONES
 
     if detector in _FILE_BASED_DETECTORS:
         # Group by file, cap per-file weight at 1.0
+        # For test_coverage: use loc_weight from finding detail instead of confidence
+        # so large untested files impact the score more than small ones.
+        use_loc_weight = (detector == "test_coverage")
         by_file: dict[str, float] = {}
+        file_cap: dict[str, float] = {}  # per-file cap for loc_weight mode
         for f in findings.values():
             if f.get("detector") != detector:
                 continue
-            if f.get("zone", "production") in _EXCLUDED_ZONES:
+            if f.get("zone", "production") in excluded_zones:
                 continue
             if f["status"] in failure_set:
-                weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
+                if use_loc_weight:
+                    weight = f.get("detail", {}).get("loc_weight", 1.0)
+                else:
+                    weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)
                 file_key = f.get("file", "")
                 by_file[file_key] = by_file.get(file_key, 0) + weight
+                # Track the single-finding weight as the per-file cap
+                # (all findings for the same file have the same loc_weight)
+                if use_loc_weight and file_key not in file_cap:
+                    file_cap[file_key] = weight
                 issue_count += 1
-        weighted_failures = sum(min(1.0, w) for w in by_file.values())
+        if use_loc_weight:
+            # Cap per-file at the file's loc_weight contribution to potential.
+            # A file can have multiple findings (e.g. tested by 3 files with issues)
+            # but should never contribute more than its potential share.
+            weighted_failures = sum(
+                min(w, file_cap.get(fk, w)) for fk, w in by_file.items())
+        else:
+            weighted_failures = sum(min(1.0, w) for w in by_file.values())
     else:
         weighted_failures = 0.0
         for f in findings.values():
             if f.get("detector") != detector:
                 continue
-            if f.get("zone", "production") in _EXCLUDED_ZONES:
+            if f.get("zone", "production") in excluded_zones:
                 continue
             if f["status"] in failure_set:
                 weight = CONFIDENCE_WEIGHTS.get(f.get("confidence", "medium"), 0.7)

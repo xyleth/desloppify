@@ -441,9 +441,11 @@ class TestDetectTestCoverage:
         zone_map = _make_zone_map([prod_f])
         graph = {prod_f: {"imports": set(), "importer_count": 0}}
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 1
+        # Potential is LOC-weighted: round(sqrt(15)) = round(3.87) = 4
+        assert potential > 0
         assert len(entries) >= 1
         assert entries[0]["detail"]["kind"] == "untested_module"
+        assert "loc_weight" in entries[0]["detail"]
 
     def test_production_with_direct_test(self, tmp_path):
         """Production file with a direct test → no untested finding."""
@@ -459,7 +461,7 @@ class TestDetectTestCoverage:
             test_f: {"imports": {prod_f}},
         }
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 1
+        assert potential > 0
         # Should not have any untested_module or untested_critical findings
         untested = [e for e in entries if e["detail"]["kind"] in ("untested_module", "untested_critical")]
         assert untested == []
@@ -480,10 +482,11 @@ class TestDetectTestCoverage:
             test_a: {"imports": {prod_a}},
         }
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 2
+        assert potential > 0
         trans_entries = [e for e in entries if e["detail"]["kind"] == "transitive_only"]
         assert len(trans_entries) == 1
         assert trans_entries[0]["file"] == prod_b
+        assert "loc_weight" in trans_entries[0]["detail"]
 
     def test_untested_critical_high_importers(self, tmp_path):
         """Untested file with >=10 importers → untested_critical (tier 2).
@@ -505,11 +508,12 @@ class TestDetectTestCoverage:
             test_other: {"imports": {other_prod}},
         }
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 2
+        assert potential > 0
         critical = [e for e in entries if e["detail"]["kind"] == "untested_critical"]
         assert len(critical) == 1
         assert critical[0]["file"] == prod_f
         assert critical[0]["tier"] == 2
+        assert "loc_weight" in critical[0]["detail"]
 
     def test_untested_module_low_importers(self, tmp_path):
         """Untested file with low importer count → untested_module (tier 3)."""
@@ -517,7 +521,7 @@ class TestDetectTestCoverage:
         zone_map = _make_zone_map([prod_f])
         graph = {prod_f: {"imports": set(), "importer_count": 2}}
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 1
+        assert potential > 0
         assert len(entries) >= 1
         assert entries[0]["detail"]["kind"] == "untested_module"
         assert entries[0]["tier"] == 3
@@ -539,10 +543,26 @@ class TestDetectTestCoverage:
         entries, potential = detect_test_coverage(
             graph, zone_map, "python", extra_test_files={ext_test},
         )
-        assert potential == 1
+        assert potential > 0
         # prod_f should be directly tested via ext_test
         untested = [e for e in entries if e["detail"]["kind"] in ("untested_module", "untested_critical")]
         assert untested == []
+
+    def test_loc_weighted_potential(self, tmp_path):
+        """Potential is LOC-weighted: sum of sqrt(loc) capped at 50."""
+        import math
+        # 100-LOC file: sqrt(100) = 10
+        prod_big = _write_file(tmp_path, "big.py", "x = 1\n" * 100)
+        # 25-LOC file: sqrt(25) = 5
+        prod_small = _write_file(tmp_path, "small.py", "x = 1\n" * 25)
+        zone_map = _make_zone_map([prod_big, prod_small])
+        graph = {
+            prod_big: {"imports": set(), "importer_count": 0},
+            prod_small: {"imports": set(), "importer_count": 0},
+        }
+        entries, potential = detect_test_coverage(graph, zone_map, "python")
+        expected = round(math.sqrt(100) + math.sqrt(25))  # 10 + 5 = 15
+        assert potential == expected
 
     def test_small_files_excluded(self, tmp_path):
         """Files below _MIN_LOC threshold are not scorable."""
@@ -567,7 +587,7 @@ class TestDetectTestCoverage:
             test_f: {"imports": {prod_f}},
         }
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 1
+        assert potential > 0
         qual_entries = [e for e in entries if e["detail"]["kind"] == "assertion_free_test"]
         assert len(qual_entries) == 1
         assert qual_entries[0]["file"] == prod_f
@@ -587,7 +607,7 @@ class TestDetectTestCoverage:
             test_f: {"imports": set()},
         }
         entries, potential = detect_test_coverage(graph, zone_map, "python")
-        assert potential == 1
+        assert potential > 0
         # Should be matched by naming convention, not untested
         untested = [e for e in entries if e["detail"]["kind"] in ("untested_module", "untested_critical")]
         assert untested == []
@@ -958,3 +978,79 @@ class TestTransitiveSemantics:
         assert len(trans) == 1
         assert "No direct tests" in trans[0]["summary"]
         assert "covered only via imports from tested modules" in trans[0]["summary"]
+
+
+# ── Complexity-weighted tier upgrade ──────────────────────
+
+
+class TestComplexityTierUpgrade:
+    def test_untested_complex_file_tier_2(self, tmp_path):
+        """Untested file with high complexity score → tier 2 (critical)."""
+        prod = _write_file(tmp_path, "complex.py", "# code\n" * 20)
+        all_files = [prod]
+        zone_map = _make_zone_map(all_files)
+        graph = {prod: {"imports": set(), "importer_count": 1}}
+        # Complexity score above threshold (20)
+        cmap = {prod: 25}
+        entries, _ = detect_test_coverage(graph, zone_map, "python", complexity_map=cmap)
+        assert len(entries) == 1
+        assert entries[0]["tier"] == 2
+        assert entries[0]["detail"]["kind"] == "untested_critical"
+        assert entries[0]["detail"]["complexity_score"] == 25
+
+    def test_untested_simple_file_stays_tier_3(self, tmp_path):
+        """Untested file without high complexity stays at tier 3."""
+        prod = _write_file(tmp_path, "simple.py", "# code\n" * 20)
+        all_files = [prod]
+        zone_map = _make_zone_map(all_files)
+        graph = {prod: {"imports": set(), "importer_count": 1}}
+        # Complexity score below threshold
+        cmap = {prod: 15}
+        entries, _ = detect_test_coverage(graph, zone_map, "python", complexity_map=cmap)
+        assert len(entries) == 1
+        assert entries[0]["tier"] == 3
+        assert entries[0]["detail"]["kind"] == "untested_module"
+        assert "complexity_score" not in entries[0]["detail"]
+
+    def test_transitive_complex_file_tier_2(self, tmp_path):
+        """Transitive-only file with high complexity → tier 2."""
+        prod_a = _write_file(tmp_path, "a.py", "import b\n" + "# code\n" * 15)
+        prod_b = _write_file(tmp_path, "b.py", "# code\n" * 20)
+        test_a = _write_file(
+            tmp_path, "test_a.py",
+            "def test_a():\n    assert True\n    assert True\n    assert True\n",
+        )
+        all_files = [prod_a, prod_b, test_a]
+        zone_map = _make_zone_map(all_files)
+        graph = {
+            prod_a: {"imports": {prod_b}, "importer_count": 0},
+            prod_b: {"imports": set(), "importer_count": 2},
+            test_a: {"imports": {prod_a}},
+        }
+        cmap = {prod_b: 30}
+        entries, _ = detect_test_coverage(graph, zone_map, "python", complexity_map=cmap)
+        trans = [e for e in entries if e["detail"]["kind"] == "transitive_only"]
+        assert len(trans) == 1
+        assert trans[0]["tier"] == 2
+        assert trans[0]["detail"]["complexity_score"] == 30
+
+    def test_no_complexity_map_no_upgrade(self, tmp_path):
+        """Without complexity_map, no tier upgrade for untested files."""
+        prod = _write_file(tmp_path, "mod.py", "# code\n" * 20)
+        all_files = [prod]
+        zone_map = _make_zone_map(all_files)
+        graph = {prod: {"imports": set(), "importer_count": 2}}
+        entries, _ = detect_test_coverage(graph, zone_map, "python")
+        assert len(entries) == 1
+        assert entries[0]["tier"] == 3
+
+    def test_complexity_at_threshold_upgrades(self, tmp_path):
+        """Complexity exactly at threshold (20) should upgrade."""
+        prod = _write_file(tmp_path, "edge.py", "# code\n" * 20)
+        all_files = [prod]
+        zone_map = _make_zone_map(all_files)
+        graph = {prod: {"imports": set(), "importer_count": 1}}
+        cmap = {prod: 20}
+        entries, _ = detect_test_coverage(graph, zone_map, "python", complexity_map=cmap)
+        assert len(entries) == 1
+        assert entries[0]["tier"] == 2

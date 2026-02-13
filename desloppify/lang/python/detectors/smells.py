@@ -52,6 +52,13 @@ SMELL_CHECKS = [
     _smell("naive_comment_strip", "re.sub strips comments without string awareness", "medium"),
     _smell("callback_logging", "Logging callback parameter (use module-level logger instead)", "medium"),
     _smell("hardcoded_path_sep", "Hardcoded '/' path separator (breaks on Windows)", "medium"),
+    # #48: lost exception context
+    _smell("lost_exception_context", "Raise without 'from' loses exception chain", "high"),
+    # #49: vestigial parameter, noop function, stderr traceback
+    _smell("vestigial_parameter", "Parameter annotated as unused/deprecated in comments", "medium"),
+    _smell("noop_function", "Non-trivial function whose body does nothing", "high"),
+    _smell("stderr_traceback", "traceback.print_exc() bypasses structured logging", "high",
+           r"traceback\.print_exc\s*\("),
 ]
 
 
@@ -206,6 +213,7 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
         _detect_swallowed_errors(filepath, lines, smell_counts)
         _detect_ast_smells(filepath, content, smell_counts)
         _detect_star_import_no_all(filepath, content, path, smell_counts)
+        _detect_vestigial_parameter(filepath, content, lines, smell_counts)
         _collect_module_constants(filepath, content, constants_by_key)
 
     # Cross-file: detect duplicate constants
@@ -299,6 +307,8 @@ def _detect_ast_smells(filepath: str, content: str, smell_counts: dict[str, list
     _detect_naive_comment_strip(filepath, tree, smell_counts)
     _detect_callback_logging(filepath, tree, smell_counts)
     _detect_hardcoded_path_sep(filepath, tree, smell_counts)
+    _detect_lost_exception_context(filepath, tree, smell_counts)
+    _detect_noop_function(filepath, tree, smell_counts)
 
 
 def _detect_monster_functions(filepath: str, node: ast.AST, smell_counts: dict[str, list]):
@@ -978,3 +988,161 @@ def _detect_hardcoded_path_sep(filepath: str, tree: ast.Module,
                     "line": node.lineno,
                     "content": f'{var_name}.startswith("{node.args[0].value}")',
                 })
+
+
+# ── Lost exception context detector (#48) ────────────────
+
+
+def _detect_lost_exception_context(filepath: str, tree: ast.Module,
+                                    smell_counts: dict[str, list]):
+    """Flag `raise X` inside except handlers that lack `from` (loses chain).
+
+    Bare `raise` (re-raise) preserves the chain implicitly, so it's not flagged.
+    Only flags explicit `raise SomeException(...)` without `from orig`.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Raise):
+                continue
+            # Bare raise (re-raise) — chain is preserved implicitly
+            if child.exc is None:
+                continue
+            # Has `from` clause — chain is preserved explicitly
+            if child.cause is not None:
+                continue
+            exc_str = ast.dump(child.exc)[:60]
+            smell_counts["lost_exception_context"].append({
+                "file": filepath,
+                "line": child.lineno,
+                "content": f"raise without 'from' in except handler: {exc_str}",
+            })
+
+
+# ── Vestigial parameter detector (#49) ───────────────────
+
+_VESTIGIAL_KEYWORDS = re.compile(
+    r"\b(?:unused|legacy|backward|compat|deprecated|no longer|kept for)\b", re.IGNORECASE
+)
+
+
+def _detect_vestigial_parameter(filepath: str, content: str, lines: list[str],
+                                 smell_counts: dict[str, list]):
+    """Flag function parameters annotated as unused/deprecated in nearby comments.
+
+    Scans comments within the line range of each function signature for keywords
+    like 'unused', 'legacy', 'deprecated', 'backward compat', etc.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        # Determine the line range of the signature (def line through first body line)
+        sig_start = node.lineno - 1  # 0-indexed
+        if node.body:
+            sig_end = node.body[0].lineno - 1  # exclusive
+        else:
+            sig_end = sig_start + 1
+
+        # Scan comments in the signature range
+        for i in range(sig_start, min(sig_end, len(lines))):
+            line = lines[i]
+            comment_idx = line.find("#")
+            if comment_idx == -1:
+                continue
+            comment = line[comment_idx:]
+            if _VESTIGIAL_KEYWORDS.search(comment):
+                smell_counts["vestigial_parameter"].append({
+                    "file": filepath,
+                    "line": i + 1,
+                    "content": f"{node.name}(): {comment.strip()[:80]}",
+                })
+                break  # One finding per function
+
+
+# ── Noop function detector (#49) ─────────────────────────
+
+_LOG_CALL_RE = re.compile(r"^(?:logger|log|logging)\.\w+|^print$")
+
+
+def _is_log_or_print(node: ast.AST) -> bool:
+    """Check if a statement is a logging/print call."""
+    if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+        return False
+    func = node.value.func
+    if isinstance(func, ast.Name) and func.id == "print":
+        return True
+    if isinstance(func, ast.Attribute):
+        if isinstance(func.value, ast.Name) and func.value.id in ("logger", "log", "logging"):
+            return True
+    return False
+
+
+def _is_trivial_if(node: ast.AST) -> bool:
+    """Check if an If statement has only trivial body (return/pass/log)."""
+    if not isinstance(node, ast.If):
+        return False
+    for stmt in node.body + node.orelse:
+        if isinstance(stmt, (ast.Pass, ast.Return)):
+            continue
+        if _is_log_or_print(stmt):
+            continue
+        if isinstance(stmt, ast.If):
+            if not _is_trivial_if(stmt):
+                return False
+            continue
+        return False
+    return True
+
+
+def _detect_noop_function(filepath: str, tree: ast.Module,
+                           smell_counts: dict[str, list]):
+    """Flag non-trivial functions whose body does nothing useful.
+
+    A function is noop if its body contains only: pass, return, logging calls,
+    and early-return ifs with trivial bodies. Excludes __init__, abstract methods,
+    property getters, short functions (< 3 statements), and decorated functions.
+    """
+    _SKIP_NAMES = {"__init__", "__str__", "__repr__", "__enter__", "__exit__",
+                   "__del__", "__hash__", "__eq__", "__lt__", "__le__",
+                   "__gt__", "__ge__", "__ne__", "__bool__", "__len__"}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name in _SKIP_NAMES:
+            continue
+        # Skip decorated functions (abstract methods, properties, etc.)
+        if node.decorator_list:
+            continue
+        # Skip short functions — dead_function already catches 1-2 statement bodies
+        body = node.body
+        # Strip leading docstring
+        if body and _is_docstring(body[0]):
+            body = body[1:]
+        if len(body) < 3:
+            continue
+
+        # Check if every statement is trivial
+        all_trivial = True
+        for stmt in body:
+            if isinstance(stmt, (ast.Pass, ast.Return)):
+                continue
+            if _is_log_or_print(stmt):
+                continue
+            if _is_trivial_if(stmt):
+                continue
+            all_trivial = False
+            break
+
+        if all_trivial:
+            smell_counts["noop_function"].append({
+                "file": filepath,
+                "line": node.lineno,
+                "content": f"{node.name}() — {len(body)} statements, all trivial (pass/return/log)",
+            })

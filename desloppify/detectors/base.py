@@ -62,16 +62,3 @@ class GodRule:
     description: str
     extract: Callable  # (ClassInfo) -> int
     threshold: int
-
-
-@dataclass
-class SmellRule:
-    """A code smell pattern to detect.
-
-    Pattern-based smells use regex; None pattern means multi-line analysis
-    handled by language-specific helpers.
-    """
-    id: str
-    label: str
-    pattern: str | None = None
-    severity: str = "medium"

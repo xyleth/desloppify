@@ -69,12 +69,8 @@ def _generate_findings_from_lang(
     total = len(phases)
     for i, phase in enumerate(phases):
         stderr(f"  [{i+1}/{total}] {phase.label}...")
-        result = phase.run(path, lang)
-        if isinstance(result, tuple):
-            phase_findings, phase_potentials = result
-            all_potentials.update(phase_potentials)
-        else:
-            phase_findings = result  # backward compat
+        phase_findings, phase_potentials = phase.run(path, lang)
+        all_potentials.update(phase_potentials)
         findings += phase_findings
 
     # Stamp language and zone on all findings

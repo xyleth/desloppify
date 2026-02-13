@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from ..lang.base import FixResult
 from ..utils import c, rel
 from ..cli import _state_path, _write_query
 
@@ -10,6 +11,9 @@ from ..cli import _state_path, _write_query
 def cmd_fix(args):
     """Auto-fix mechanical issues."""
     fixer_name = args.fixer
+    if fixer_name == "review":
+        return _cmd_fix_review(args)
+
     dry_run = getattr(args, "dry_run", False)
     path = Path(args.path)
 
@@ -23,7 +27,13 @@ def cmd_fix(args):
         print(c(f"No {fixer['label']} found.", "green"))
         return
 
-    results = fixer["fix"](entries, dry_run=dry_run)
+    raw = fixer["fix"](entries, dry_run=dry_run)
+    if isinstance(raw, FixResult):
+        results = raw.entries
+        skip_reasons = raw.skip_reasons
+    else:
+        results = raw
+        skip_reasons = {}
     total_items = sum(len(r["removed"]) for r in results)
     total_lines = sum(r.get("lines_removed", 0) for r in results)
     _print_fix_summary(fixer, results, total_items, total_lines, dry_run)
@@ -32,24 +42,92 @@ def cmd_fix(args):
         _show_dry_run_samples(entries, results)
 
     if not dry_run:
-        _apply_and_report(args, path, fixer, fixer_name, entries, results, total_items)
+        _apply_and_report(args, path, fixer, fixer_name, entries, results,
+                          total_items, skip_reasons)
     else:
         _report_dry_run(args, fixer_name, entries, results, total_items)
     print()
 
 
+def _cmd_fix_review(args):
+    """Prepare structured review data with dimension templates for AI evaluation."""
+    from ..cli import _resolve_lang, _state_path
+    from ..state import load_state
+    from ..review import prepare_review, DIMENSION_PROMPTS, LANG_GUIDANCE
+    from .review_cmd import _setup_lang
+
+    lang = _resolve_lang(args)
+    if not lang:
+        print(c("Error: could not detect language. Use --lang.", "red"))
+        sys.exit(1)
+
+    sp = _state_path(args)
+    state = load_state(sp)
+    path = Path(args.path)
+
+    found_files = _setup_lang(lang, path, state)
+    data = prepare_review(path, lang, state, files=found_files or None)
+
+    if data["total_candidates"] == 0:
+        print(c("\n  All production files have been reviewed. Nothing to do.", "green"))
+        return
+
+    # Print review guide to terminal
+    print(c(f"\n  {data['total_candidates']} files need design review\n", "bold"))
+
+    dims = data.get("dimensions", [])
+    prompts = data.get("dimension_prompts", {})
+    for dim in dims:
+        prompt = prompts.get(dim)
+        if not prompt:
+            continue
+        print(c(f"  {dim}", "cyan"))
+        print(c(f"    {prompt['description']}", "dim"))
+        print(c("    Look for:", "dim"))
+        for item in prompt.get("look_for", []):
+            print(c(f"      - {item}", "dim"))
+        skip = prompt.get("skip", [])
+        if skip:
+            print(c("    Skip:", "dim"))
+            for item in skip:
+                print(c(f"      - {item}", "dim"))
+        print()
+
+    lang_guide = data.get("lang_guidance") or LANG_GUIDANCE.get(lang.name, {})
+    if lang_guide:
+        print(c(f"  Language: {lang.name}", "cyan"))
+        if lang_guide.get("naming"):
+            print(c(f"    Naming: {lang_guide['naming']}", "dim"))
+        for pattern in lang_guide.get("patterns", []):
+            print(c(f"    - {pattern}", "dim"))
+        print()
+
+    _write_query(data)
+    print(c("  Review data written to .desloppify/query.json", "dim"))
+    print(c("\n  Next steps:", "cyan"))
+    print(c("  1. Read query.json — it contains file contents and context", "dim"))
+    print(c("  2. Evaluate each file against the dimensions above", "dim"))
+    print(c("  3. Write findings as JSON array to a file (e.g. findings.json)", "dim"))
+    print(c("  4. Import: desloppify review --import findings.json", "dim"))
+    print()
+
+
+_COMMAND_POST_FIX: dict[str, object] = {}  # populated after _cascade_import_cleanup is defined
+
+
 def _load_fixer(args, fixer_name: str) -> dict:
-    """Resolve fixer from language plugin or built-in registry, or exit."""
+    """Resolve fixer from language plugin registry, or exit."""
     from ..cli import _resolve_lang
     lang = _resolve_lang(args)
-    if lang and lang.fixers and fixer_name in lang.fixers:
-        fc = lang.fixers[fixer_name]
-        return {k: getattr(fc, k) for k in
-                ("label", "detect", "fix", "detector", "verb", "dry_verb", "post_fix")}
-    fixer = _get_fixer(fixer_name)
-    if fixer is None:
+    if not lang or not lang.fixers or fixer_name not in lang.fixers:
         print(c(f"Unknown fixer: {fixer_name}", "red"))
         sys.exit(1)
+    fc = lang.fixers[fixer_name]
+    fixer = {k: getattr(fc, k) for k in
+             ("label", "detect", "fix", "detector", "verb", "dry_verb", "post_fix")}
+    # Attach command-level post-fix hooks (e.g. cascading import cleanup)
+    if fixer_name in _COMMAND_POST_FIX and not fixer.get("post_fix"):
+        fixer["post_fix"] = _COMMAND_POST_FIX[fixer_name]
     return fixer
 
 
@@ -77,7 +155,8 @@ def _print_fix_summary(fixer, results, total_items, total_lines, dry_run):
         print(f"  ... and {len(results) - 30} more files")
 
 
-def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_items):
+def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_items,
+                      skip_reasons=None):
     """Resolve findings in state, run post-fix hooks, and print retro."""
     from ..state import load_state, save_state
     sp = _state_path(args)
@@ -96,7 +175,8 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
         fixer["post_fix"](path, state, prev_score, False)
         save_state(state, sp)
 
-    skip_reasons = getattr(results, "skip_reasons", {})
+    if skip_reasons is None:
+        skip_reasons = {}
     from ..narrative import compute_narrative
     from ..cli import _resolve_lang
     fix_lang = _resolve_lang(args)
@@ -132,75 +212,6 @@ def _report_dry_run(args, fixer_name, entries, results, total_items):
                    "Ready to run without --dry-run? (git push first!)"]:
             print(c(f"  - {q}", "dim"))
 
-
-def _detect_unused(path, category):
-    from ..lang.typescript.detectors.unused import detect_unused
-    return detect_unused(path, category=category)[0]
-
-def _detect_logs(path):
-    from ..lang.typescript.detectors.logs import detect_logs
-    return detect_logs(path)[0]
-
-def _detect_dead_exports(path):
-    from ..lang.typescript.detectors.exports import detect_dead_exports
-    return detect_dead_exports(path)[0]
-
-def _detect_smell_flat(path, smell_id):
-    from ..lang.typescript.detectors.smells import detect_smells
-    return next((e.get("matches", []) for e in detect_smells(path)[0] if e["id"] == smell_id), [])
-
-def _get_fixer(name: str) -> dict | None:
-    """Lazy-load and return fixer config by name."""
-    from ..lang.typescript import fixers as F
-    _udet = lambda cat: lambda p: _detect_unused(p, cat)
-    R, DV = "Removed", "Would remove"
-    registry = {
-        "unused-imports": {"label": "unused imports", "detector": "unused",
-                           "detect": _udet("imports"), "fix": F.fix_unused_imports,
-                           "verb": R, "dry_verb": DV},
-        "debug-logs": {"label": "tagged debug logs", "detector": "logs",
-                       "detect": _detect_logs, "fix": _wrap_debug_logs_fix(F.fix_debug_logs),
-                       "verb": R, "dry_verb": DV, "post_fix": _cascade_import_cleanup},
-        "dead-exports": {"label": "dead exports", "detector": "exports",
-                         "detect": _detect_dead_exports, "fix": F.fix_dead_exports,
-                         "verb": "De-exported", "dry_verb": "Would de-export"},
-        "unused-vars": {"label": "unused vars", "detector": "unused",
-                        "detect": _udet("vars"),
-                        "fix": _wrap_unused_vars_fix(F.fix_unused_vars),
-                        "verb": R, "dry_verb": DV},
-        "unused-params": {"label": "unused params", "detector": "unused",
-                          "detect": _udet("vars"), "fix": F.fix_unused_params,
-                          "verb": "Prefixed", "dry_verb": "Would prefix"},
-        "dead-useeffect": {"label": "dead useEffect calls", "detector": "smells",
-                           "detect": lambda p: _detect_smell_flat(p, "dead_useeffect"),
-                           "fix": F.fix_dead_useeffect,
-                           "verb": R, "dry_verb": DV, "post_fix": _cascade_import_cleanup},
-        "empty-if-chain": {"label": "empty if/else chains", "detector": "smells",
-                           "detect": lambda p: _detect_smell_flat(p, "empty_if_chain"),
-                           "fix": F.fix_empty_if_chain, "verb": R, "dry_verb": DV},
-    }
-    return registry.get(name)
-
-class _ResultsWithMeta(list):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.skip_reasons: dict[str, int] = {}
-
-def _wrap_unused_vars_fix(fix_fn):
-    def wrapper(entries, *, dry_run=False):
-        results, skip_reasons = fix_fn(entries, dry_run=dry_run)
-        results = _ResultsWithMeta(results)
-        results.skip_reasons = skip_reasons
-        return results
-    return wrapper
-
-def _wrap_debug_logs_fix(fix_fn):
-    def wrapper(entries, *, dry_run=False):
-        results = fix_fn(entries, dry_run=dry_run)
-        for r in results:
-            r["removed"] = r.get("tags", r.get("removed", []))
-        return results
-    return wrapper
 
 def _resolve_fixer_results(state, results, detector, fixer_name):
     """Mark matching open findings as fixed, return resolved IDs."""
@@ -279,6 +290,11 @@ def _cascade_import_cleanup(path: Path, state: dict, prev_score: int, dry_run: b
     resolved = _resolve_fixer_results(state, results, "unused", "debug-logs (cascade)")
     if resolved:
         print(f"  Cascade: auto-resolved {len(resolved)} import findings")
+
+
+# Attach command-level post-fix hooks now that _cascade_import_cleanup is defined
+_COMMAND_POST_FIX["debug-logs"] = _cascade_import_cleanup
+_COMMAND_POST_FIX["dead-useeffect"] = _cascade_import_cleanup
 
 
 _SKIP_REASON_LABELS = {

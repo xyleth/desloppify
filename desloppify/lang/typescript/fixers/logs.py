@@ -68,7 +68,8 @@ def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
                     "log_count": len(file_entries),
                 })
                 if not dry_run:
-                    p.write_text(new_content)
+                    from ....utils import safe_write_text
+                    safe_write_text(filepath, new_content)
         except (OSError, UnicodeDecodeError) as ex:
             print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
 

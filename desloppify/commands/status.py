@@ -212,7 +212,8 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
 
 def _show_structural_areas(state: dict):
     """Show structural debt grouped by area when T3/T4 debt is significant."""
-    findings = state.get("findings", {})
+    from ..state import path_scoped_findings
+    findings = path_scoped_findings(state.get("findings", {}), state.get("scan_path"))
 
     structural = [f for f in findings.values()
                   if f["tier"] in (3, 4) and f["status"] in ("open", "wontfix")]

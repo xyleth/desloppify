@@ -267,14 +267,55 @@ class TestDetectorPassRate:
         assert weighted == 1.0  # capped
 
     def test_test_coverage_is_file_based(self):
-        """test_coverage detector should also use file-based capping."""
+        """test_coverage detector uses loc_weight from detail, not confidence."""
+        f1 = _finding("test_coverage", status="open", confidence="high", file="a.py")
+        f1["detail"] = {"loc_weight": 5.0}
+        findings = _findings_dict(f1)
+        rate, issues, weighted = _detector_pass_rate("test_coverage", findings, 100)
+        assert issues == 1
+        assert weighted == pytest.approx(5.0)
+
+    def test_test_coverage_per_file_cap(self):
+        """Multiple findings for the same file are capped at one file's loc_weight."""
+        f1 = _finding("test_coverage", status="open", confidence="high", file="a.py")
+        f1["detail"] = {"loc_weight": 5.0}
+        f2 = _finding("test_coverage", status="open", confidence="high", file="a.py")
+        f2["detail"] = {"loc_weight": 5.0}
+        f3 = _finding("test_coverage", status="open", confidence="high", file="a.py")
+        f3["detail"] = {"loc_weight": 5.0}
+        findings = _findings_dict(f1, f2, f3)
+        rate, issues, weighted = _detector_pass_rate("test_coverage", findings, 100)
+        assert issues == 3
+        # 3 findings but capped at one file's loc_weight (5.0)
+        assert weighted == pytest.approx(5.0)
+
+    def test_test_coverage_loc_weight_default(self):
+        """test_coverage findings without loc_weight default to 1.0."""
         findings = _findings_dict(
-            _finding("test_coverage", status="open", confidence="high", file="a.py"),
             _finding("test_coverage", status="open", confidence="high", file="a.py"),
         )
         rate, issues, weighted = _detector_pass_rate("test_coverage", findings, 10)
-        assert issues == 2
-        assert weighted == 1.0  # capped
+        assert issues == 1
+        assert weighted == pytest.approx(1.0)
+
+    def test_test_coverage_large_vs_small_files(self):
+        """Large untested files contribute more to score than small ones."""
+        import math
+        # 500-LOC file: loc_weight = min(sqrt(500), 50) ≈ 22.4
+        f_large = _finding("test_coverage", status="open", file="big.py")
+        f_large["detail"] = {"loc_weight": min(math.sqrt(500), 50)}
+        # 15-LOC file: loc_weight = min(sqrt(15), 50) ≈ 3.87
+        f_small = _finding("test_coverage", status="open", file="small.py")
+        f_small["detail"] = {"loc_weight": min(math.sqrt(15), 50)}
+
+        # Only the large file
+        large_only = _findings_dict(f_large)
+        _, _, w_large = _detector_pass_rate("test_coverage", large_only, 100)
+        # Only the small file
+        small_only = _findings_dict(f_small)
+        _, _, w_small = _detector_pass_rate("test_coverage", small_only, 100)
+        # Large file contributes ~5.8x more
+        assert w_large / w_small > 5
 
     def test_pass_rate_floor_at_zero(self):
         """Pass rate can't go below 0.0 even with huge weighted failures."""

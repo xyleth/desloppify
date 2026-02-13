@@ -16,7 +16,6 @@ def _set_project_root(tmp_path, monkeypatch):
     monkeypatch.setattr(utils_mod, "SRC_PATH", tmp_path / "src")
     import desloppify.lang.typescript.detectors.deps as det_mod
     monkeypatch.setattr(det_mod, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(det_mod, "SRC_PATH", tmp_path / "src")
     # Clear caches so each test starts fresh
     utils_mod._find_source_files_cached.cache_clear()
     det_mod._tsconfig_cache.clear()

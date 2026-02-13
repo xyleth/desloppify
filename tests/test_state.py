@@ -344,3 +344,121 @@ class TestMissingFindingsResolved:
         assert diff["auto_resolved"] >= 1
         assert st["findings"]["det::a.py::fn"]["status"] == "auto_resolved"
         assert st["findings"]["det::a.py::fn"]["resolved_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# #53: Wontfix auto-resolution via potentials (ran_detectors)
+# ---------------------------------------------------------------------------
+
+class TestWontfixAutoResolution:
+    """Wontfix findings should be auto-resolved when the detector ran
+    (appears in potentials) but produced 0 findings for those files (#53)."""
+
+    def test_wontfix_resolved_when_detector_ran(self):
+        """Wontfix findings auto-resolve when detector is in potentials."""
+        from desloppify.state import merge_scan
+        st = _empty_state()
+        # Pre-populate 3 open + 2 wontfix test_coverage findings
+        for i in range(3):
+            f = _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py", lang="python")
+            st["findings"][f["id"]] = f
+        for i in range(3, 5):
+            f = _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py",
+                status="wontfix", lang="python")
+            st["findings"][f["id"]] = f
+
+        # Simulate: user wrote tests for ALL files → 0 findings
+        # test_coverage ran (in potentials) but found nothing
+        diff = merge_scan(st, [], lang="python",
+                          potentials={"test_coverage": 50, "smells": 100})
+        assert diff["auto_resolved"] == 5
+        for fid, finding in st["findings"].items():
+            assert finding["status"] == "auto_resolved"
+
+    def test_wontfix_not_resolved_when_detector_suspect(self):
+        """Wontfix findings survive when detector didn't run (not in potentials)."""
+        from desloppify.state import merge_scan
+        st = _empty_state()
+        # 4 open findings (>=3 triggers suspect detection)
+        for i in range(4):
+            f = _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py", lang="python")
+            st["findings"][f["id"]] = f
+        # 1 wontfix finding
+        wf = _make_raw_finding(
+            "test_coverage::mod4.py::untested_module",
+            detector="test_coverage", file="mod4.py",
+            status="wontfix", lang="python")
+        st["findings"][wf["id"]] = wf
+
+        # test_coverage NOT in potentials → suspect → wontfix preserved
+        diff = merge_scan(st, [], lang="python",
+                          potentials={"smells": 100})
+        assert "test_coverage" in diff["suspect_detectors"]
+        assert st["findings"]["test_coverage::mod4.py::untested_module"]["status"] == "wontfix"
+
+    def test_wontfix_resolved_when_some_findings_remain(self):
+        """Wontfix findings for fixed files are resolved even when other
+        findings remain (detector not suspect because it produced findings)."""
+        from desloppify.state import merge_scan
+        st = _empty_state()
+        # 2 wontfix + 2 open
+        for i in range(2):
+            f = _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py",
+                status="wontfix", lang="python")
+            st["findings"][f["id"]] = f
+        for i in range(2, 4):
+            f = _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py", lang="python")
+            st["findings"][f["id"]] = f
+
+        # User wrote tests for wontfix files only — 2 findings remain (open ones)
+        current = [
+            _make_raw_finding(
+                f"test_coverage::mod{i}.py::untested_module",
+                detector="test_coverage", file=f"mod{i}.py")
+            for i in range(2, 4)
+        ]
+        diff = merge_scan(st, current, lang="python",
+                          potentials={"test_coverage": 50})
+        # The 2 wontfix findings should be auto-resolved
+        assert st["findings"]["test_coverage::mod0.py::untested_module"]["status"] == "auto_resolved"
+        assert st["findings"]["test_coverage::mod1.py::untested_module"]["status"] == "auto_resolved"
+        # The 2 open findings should still be open (they were re-emitted)
+        assert st["findings"]["test_coverage::mod2.py::untested_module"]["status"] == "open"
+        assert st["findings"]["test_coverage::mod3.py::untested_module"]["status"] == "open"
+
+    def test_empty_potentials_dict_not_treated_as_none(self):
+        """Empty potentials {} means 'scan ran but no detectors reported' —
+        should not mark detectors suspect just because dict is falsy."""
+        from desloppify.state import merge_scan, _find_suspect_detectors
+        # Build a state with 3 open findings for a detector
+        existing = {}
+        for i in range(3):
+            f = _make_raw_finding(
+                f"det::mod{i}.py::x", detector="det", file=f"mod{i}.py")
+            existing[f["id"]] = f
+        # Empty potentials {} — ran_detectors should be set() not None
+        suspect = _find_suspect_detectors(existing, {}, False, ran_detectors=set())
+        # det had 3 open, returned 0, but set() means "ran" info was provided
+        # Since det is NOT in ran_detectors=set(), it IS suspect
+        assert "det" in suspect
+
+    def test_potentials_none_means_no_info(self):
+        """potentials=None means no ran_detectors info at all."""
+        from desloppify.state import _find_suspect_detectors
+        existing = {}
+        for i in range(3):
+            f = _make_raw_finding(
+                f"det::mod{i}.py::x", detector="det", file=f"mod{i}.py")
+            existing[f["id"]] = f
+        suspect = _find_suspect_detectors(existing, {}, False, ran_detectors=None)
+        assert "det" in suspect

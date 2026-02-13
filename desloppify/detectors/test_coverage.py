@@ -12,6 +12,7 @@ import re
 from collections import deque
 from pathlib import Path
 
+from ..utils import SRC_PATH
 from ..zones import FileZoneMap, Zone
 
 # ── Assertion / mock / snapshot patterns ──────────────────
@@ -25,6 +26,12 @@ PY_ASSERT_PATTERNS = [
 TS_ASSERT_PATTERNS = [
     re.compile(p) for p in [
         r"expect\(", r"assert\.", r"\.should\.",
+        r"\b(?:getBy|findBy|getAllBy|findAllBy)\w+\(",
+        r"\bwaitFor\(",
+        r"\.toBeInTheDocument\(",
+        r"\.toBeVisible\(",
+        r"\.toHaveTextContent\(",
+        r"\.toHaveAttribute\(",
     ]
 ]
 PY_MOCK_PATTERNS = [
@@ -182,6 +189,15 @@ def _import_based_mapping(
         else:
             # External test file: parse imports from source
             tested |= _parse_test_imports(tf, production_files, prod_by_module)
+
+    # Expand barrel files (index.ts/index.tsx) — one level deep
+    barrel_files = [
+        f for f in tested
+        if os.path.basename(f) in ("index.ts", "index.tsx")
+    ]
+    for bf in barrel_files:
+        tested |= _resolve_barrel_reexports(bf, production_files)
+
     return tested
 
 
@@ -191,6 +207,66 @@ _PY_IMPORT_RE = re.compile(
 _TS_IMPORT_RE = re.compile(
     r"""(?:from|import)\s+['"]([^'"]+)['"]""", re.MULTILINE
 )
+
+
+_TS_EXTENSIONS = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]
+
+
+def _resolve_ts_import(
+    spec: str, test_path: str, production_files: set[str],
+) -> str | None:
+    """Resolve a TS import specifier to a production file path.
+
+    Handles @/ and ~/ aliases (via SRC_PATH), relative paths (./  ../),
+    and probes common extensions (.ts, .tsx, /index.ts, /index.tsx).
+    """
+    if spec.startswith("@/") or spec.startswith("~/"):
+        base = Path(str(SRC_PATH) + "/" + spec[2:])
+    elif spec.startswith("."):
+        test_dir = Path(test_path).parent
+        base = (test_dir / spec).resolve()
+    else:
+        return None
+
+    for ext in _TS_EXTENSIONS:
+        candidate = str(Path(str(base) + ext))
+        if candidate in production_files:
+            return candidate
+        # Also try resolving symlinks / normalising for on-disk check
+        try:
+            resolved = str(Path(str(base) + ext).resolve())
+            if resolved in production_files:
+                return resolved
+        except OSError:
+            pass
+    return None
+
+
+_REEXPORT_RE = re.compile(
+    r"""^export\s+(?:\{[^}]*\}|\*)\s+from\s+['"]([^'"]+)['"]""", re.MULTILINE
+)
+
+
+def _resolve_barrel_reexports(
+    filepath: str, production_files: set[str],
+) -> set[str]:
+    """Resolve re-exports from a barrel file (index.ts/index.tsx).
+
+    One level deep only — no recursive barrel chaining.
+    Returns the set of production files re-exported by this barrel.
+    """
+    try:
+        content = Path(filepath).read_text()
+    except (OSError, UnicodeDecodeError):
+        return set()
+
+    results = set()
+    for m in _REEXPORT_RE.finditer(content):
+        spec = m.group(1)
+        resolved = _resolve_ts_import(spec, filepath, production_files)
+        if resolved:
+            results.add(resolved)
+    return results
 
 
 def _parse_test_imports(
@@ -221,7 +297,12 @@ def _parse_test_imports(
         spec = m.group(1)
         if not spec:
             continue
-        # Resolve relative/absolute TS imports
+        # First try proper resolution (relative paths, @/ alias)
+        resolved = _resolve_ts_import(spec, test_path, production_files)
+        if resolved:
+            tested.add(resolved)
+            continue
+        # Fallback: fuzzy module lookup
         cleaned = spec.lstrip("./").replace("/", ".")
         if cleaned in prod_by_module:
             tested.add(prod_by_module[cleaned])
@@ -349,6 +430,22 @@ def _transitive_coverage(
     return visited - directly_tested
 
 
+def _strip_py_comment(line: str) -> str:
+    """Strip Python # comments while respecting string literals."""
+    in_str = None
+    for i, ch in enumerate(line):
+        if in_str:
+            if ch == '\\' and i + 1 < len(line):
+                continue  # skip escaped char (next iteration handles it)
+            if ch == in_str:
+                in_str = None
+        elif ch in ('"', "'"):
+            in_str = ch
+        elif ch == '#' and not in_str:
+            return line[:i]
+    return line
+
+
 def _analyze_test_quality(
     test_files: set[str], lang_name: str,
 ) -> dict[str, dict]:
@@ -369,25 +466,31 @@ def _analyze_test_quality(
         except (OSError, UnicodeDecodeError):
             continue
 
-        lines = content.splitlines()
+        # Strip comments before pattern matching
+        if lang_name != "python":
+            from ..lang.typescript.detectors._smell_helpers import _strip_ts_comments
+            stripped = _strip_ts_comments(content)
+        else:
+            stripped = "\n".join(_strip_py_comment(line) for line in content.splitlines())
 
+        lines = stripped.splitlines()
+
+        # Use any() per line to avoid double-counting when multiple patterns
+        # match the same line (e.g. expect(el).toBeVisible() matching both)
         assertions = sum(
             1 for line in lines
-            for pat in assert_pats
-            if pat.search(line)
+            if any(pat.search(line) for pat in assert_pats)
         )
         mocks = sum(
             1 for line in lines
-            for pat in mock_pats
-            if pat.search(line)
+            if any(pat.search(line) for pat in mock_pats)
         )
         snapshots = sum(
             1 for line in lines
-            for pat in TS_SNAPSHOT_PATTERNS
-            if pat.search(line)
+            if any(pat.search(line) for pat in TS_SNAPSHOT_PATTERNS)
         ) if lang_name != "python" else 0
 
-        test_functions = len(test_func_re.findall(content))
+        test_functions = len(test_func_re.findall(stripped))
 
         # Classify quality
         if test_functions == 0:
@@ -513,10 +616,10 @@ def _generate_findings(
             entries.append({
                 "file": f,
                 "name": "transitive_only",
-                "tier": 3,
+                "tier": 2 if ic >= 10 else 3,
                 "confidence": "medium",
-                "summary": (f"Only transitively tested ({loc} LOC, {ic} importers) "
-                            f"— no direct test file"),
+                "summary": (f"No direct tests ({loc} LOC, {ic} importers) "
+                            f"— covered only via imports from tested modules"),
                 "detail": {"kind": "transitive_only", "loc": loc, "importer_count": ic},
             })
 

@@ -13,6 +13,9 @@ from desloppify.detectors.test_coverage import (
     _map_test_to_source,
     _naming_based_mapping,
     _parse_test_imports,
+    _resolve_barrel_reexports,
+    _resolve_ts_import,
+    _strip_py_comment,
     _strip_test_markers,
     _transitive_coverage,
     detect_test_coverage,
@@ -632,3 +635,326 @@ class TestNamingBasedMapping:
         # _strip_test_markers("test_utils.py") → "utils.py"
         # prod_by_basename["utils.py"] → "src/deep/utils.py"
         assert result == {"src/deep/utils.py"}
+
+
+# ── _resolve_ts_import ───────────────────────────────────
+
+
+class TestResolveTsImport:
+    def test_relative_import_same_dir(self, tmp_path):
+        """./utils resolves to sibling file."""
+        prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        test = _write_file(tmp_path, "src/utils.test.ts", "")
+        result = _resolve_ts_import("./utils", test, {prod})
+        assert result == prod
+
+    def test_relative_import_parent_dir(self, tmp_path):
+        """../utils resolves to parent directory file."""
+        prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        test = _write_file(tmp_path, "src/__tests__/utils.test.ts", "")
+        result = _resolve_ts_import("../utils", test, {prod})
+        assert result == prod
+
+    def test_relative_import_deep(self, tmp_path):
+        """../../lib/helpers resolves multi-level relative path."""
+        prod = _write_file(tmp_path, "lib/helpers.ts", "export const x = 1;\n")
+        test = _write_file(tmp_path, "src/__tests__/sub/test.ts", "")
+        result = _resolve_ts_import("../../../lib/helpers", test, {prod})
+        assert result == prod
+
+    def test_alias_at_slash(self, tmp_path, monkeypatch):
+        """@/components/Button resolves via SRC_PATH."""
+        import desloppify.detectors.test_coverage as tc
+        orig = tc.SRC_PATH
+        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
+        try:
+            prod = _write_file(tmp_path, "src/components/Button.tsx", "export default function Button() {}\n")
+            result = _resolve_ts_import("@/components/Button", "/any/test.ts", {prod})
+            assert result == prod
+        finally:
+            monkeypatch.setattr(tc, "SRC_PATH", orig)
+
+    def test_alias_tilde(self, tmp_path, monkeypatch):
+        """~/utils resolves via SRC_PATH."""
+        import desloppify.detectors.test_coverage as tc
+        orig = tc.SRC_PATH
+        monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
+        try:
+            prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+            result = _resolve_ts_import("~/utils", "/any/test.ts", {prod})
+            assert result == prod
+        finally:
+            monkeypatch.setattr(tc, "SRC_PATH", orig)
+
+    def test_index_ts_extension_probing(self, tmp_path):
+        """Bare directory import resolves to index.ts."""
+        prod = _write_file(tmp_path, "src/components/index.ts", "export * from './Button';\n")
+        test = _write_file(tmp_path, "src/components.test.ts", "")
+        result = _resolve_ts_import("./components", test, {prod})
+        assert result == prod
+
+    def test_nonexistent_returns_none(self, tmp_path):
+        test = _write_file(tmp_path, "src/test.ts", "")
+        result = _resolve_ts_import("./nonexistent", test, set())
+        assert result is None
+
+    def test_non_relative_returns_none(self):
+        """Bare module specifiers (like 'react') return None."""
+        result = _resolve_ts_import("react", "/test.ts", set())
+        assert result is None
+
+
+# ── _resolve_barrel_reexports ────────────────────────────
+
+
+class TestResolveBarrelReexports:
+    def test_named_reexports(self, tmp_path):
+        """export { Foo } from './foo' resolves the re-exported module."""
+        foo = _write_file(tmp_path, "src/foo.ts", "export const Foo = 1;\n")
+        barrel = _write_file(
+            tmp_path, "src/index.ts",
+            "export { Foo } from './foo';\nexport { Bar } from './bar';\n",
+        )
+        bar = _write_file(tmp_path, "src/bar.ts", "export const Bar = 2;\n")
+        result = _resolve_barrel_reexports(barrel, {foo, bar})
+        assert foo in result
+        assert bar in result
+
+    def test_star_reexport(self, tmp_path):
+        """export * from './utils' resolves."""
+        utils = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        barrel = _write_file(tmp_path, "src/index.ts", "export * from './utils';\n")
+        result = _resolve_barrel_reexports(barrel, {utils})
+        assert utils in result
+
+    def test_non_barrel_file(self, tmp_path):
+        """File with no re-exports returns empty set."""
+        f = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        result = _resolve_barrel_reexports(f, set())
+        assert result == set()
+
+    def test_nonexistent_file(self):
+        result = _resolve_barrel_reexports("/no/such/file.ts", set())
+        assert result == set()
+
+    def test_barrel_expansion_in_import_mapping(self, tmp_path):
+        """Integration: barrel imports expand to re-exported modules."""
+        utils = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
+        helpers = _write_file(tmp_path, "src/helpers.ts", "export const y = 2;\n")
+        barrel = _write_file(
+            tmp_path, "src/index.ts",
+            "export * from './utils';\nexport { y } from './helpers';\n",
+        )
+        test = _write_file(
+            tmp_path, "src/__tests__/test.ts",
+            "import { x, y } from '../index';\n",
+        )
+        production = {utils, helpers, barrel}
+        graph = {}
+        result = _import_based_mapping(graph, {test}, production)
+        assert barrel in result
+        assert utils in result
+        assert helpers in result
+
+
+# ── Comment stripping in assertion counting ──────────────
+
+
+class TestCommentStripping:
+    def test_ts_comment_not_counted(self, tmp_path):
+        """Assertions in TS // comments should not be counted."""
+        content = (
+            'it("a", () => {\n'
+            "  // expect(foo).toBe(1);\n"
+            "  expect(bar).toBe(2);\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "foo.test.ts", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] == 1
+
+    def test_ts_block_comment_not_counted(self, tmp_path):
+        """Assertions in TS /* */ comments should not be counted."""
+        content = (
+            'it("a", () => {\n'
+            "  /* expect(foo).toBe(1); */\n"
+            "  expect(bar).toBe(2);\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "bar.test.ts", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] == 1
+
+    def test_py_comment_not_counted(self, tmp_path):
+        """Assertions in Python # comments should not be counted."""
+        content = (
+            "def test_a():\n"
+            "    # assert False\n"
+            "    assert True\n"
+            "    assert True\n"
+            "    assert True\n"
+        )
+        tf = _write_file(tmp_path, "test_commented.py", content)
+        result = _analyze_test_quality({tf}, "python")
+        assert result[tf]["assertions"] == 3
+
+    def test_py_comment_in_string_not_stripped(self):
+        """# inside strings should NOT be treated as comments."""
+        assert _strip_py_comment('x = "has # in string"') == 'x = "has # in string"'
+        assert _strip_py_comment("x = 'has # in string'") == "x = 'has # in string'"
+
+    def test_py_comment_strips_after_code(self):
+        """# after code should be stripped."""
+        assert _strip_py_comment("x = 1  # comment").rstrip() == "x = 1"
+
+
+# ── RTL assertion patterns ───────────────────────────────
+
+
+class TestRTLPatterns:
+    def test_getby_counted(self, tmp_path):
+        content = (
+            'it("renders", () => {\n'
+            "  screen.getByText('hello');\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "comp.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] >= 1
+
+    def test_findby_counted(self, tmp_path):
+        content = (
+            'it("finds", async () => {\n'
+            "  await screen.findByRole('button');\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "comp2.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] >= 1
+
+    def test_waitfor_counted(self, tmp_path):
+        content = (
+            'it("waits", async () => {\n'
+            "  await waitFor(() => {});\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "comp3.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] >= 1
+
+    def test_jest_dom_matchers(self, tmp_path):
+        content = (
+            'it("checks dom", () => {\n'
+            "  expect(el).toBeInTheDocument();\n"
+            "  expect(el).toBeVisible();\n"
+            "  expect(el).toHaveTextContent('hello');\n"
+            "  expect(el).toHaveAttribute('id');\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "dom.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        # Each line matches at least one pattern; any() per line → 4
+        assert result[tf]["assertions"] == 4
+
+    def test_no_double_counting(self, tmp_path):
+        """expect(el).toBeVisible() should count as 1, not 2."""
+        content = (
+            'it("check", () => {\n'
+            "  expect(el).toBeVisible();\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "dbl.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["assertions"] == 1
+
+    def test_destructured_queries(self, tmp_path):
+        """Destructured RTL queries like getByText(...) should count."""
+        content = (
+            'it("destr", () => {\n'
+            "  const { getByText } = render(<Comp />);\n"
+            "  getByText('hello');\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "destr.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        # getByText( appears on both lines but 2nd is the assertion
+        assert result[tf]["assertions"] >= 1
+
+    def test_rtl_quality_adequate(self, tmp_path):
+        """RTL-heavy test should be classified as adequate/thorough, not assertion_free."""
+        content = (
+            'it("renders", () => {\n'
+            "  screen.getByText('hello');\n"
+            "  screen.getByRole('button');\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "rtl.test.tsx", content)
+        result = _analyze_test_quality({tf}, "typescript")
+        assert result[tf]["quality"] in ("adequate", "thorough")
+
+
+# ── Transitive coverage semantics ────────────────────────
+
+
+class TestTransitiveSemantics:
+    def test_transitive_high_importers_tier_2(self, tmp_path):
+        """Transitive-only file with >=10 importers gets tier 2."""
+        prod_a = _write_file(tmp_path, "a.py", "import b\n" + "# code\n" * 15)
+        prod_b = _write_file(tmp_path, "b.py", "# code\n" * 15)
+        test_a = _write_file(
+            tmp_path, "test_a.py",
+            "def test_a():\n    assert True\n    assert True\n    assert True\n",
+        )
+        all_files = [prod_a, prod_b, test_a]
+        zone_map = _make_zone_map(all_files)
+        graph = {
+            prod_a: {"imports": {prod_b}, "importer_count": 0},
+            prod_b: {"imports": set(), "importer_count": 15},
+            test_a: {"imports": {prod_a}},
+        }
+        entries, potential = detect_test_coverage(graph, zone_map, "python")
+        trans = [e for e in entries if e["detail"]["kind"] == "transitive_only"]
+        assert len(trans) == 1
+        assert trans[0]["tier"] == 2
+        assert "covered only via imports" in trans[0]["summary"]
+
+    def test_transitive_low_importers_tier_3(self, tmp_path):
+        """Transitive-only file with <10 importers stays at tier 3."""
+        prod_a = _write_file(tmp_path, "a.py", "import b\n" + "# code\n" * 15)
+        prod_b = _write_file(tmp_path, "b.py", "# code\n" * 15)
+        test_a = _write_file(
+            tmp_path, "test_a.py",
+            "def test_a():\n    assert True\n    assert True\n    assert True\n",
+        )
+        all_files = [prod_a, prod_b, test_a]
+        zone_map = _make_zone_map(all_files)
+        graph = {
+            prod_a: {"imports": {prod_b}, "importer_count": 0},
+            prod_b: {"imports": set(), "importer_count": 2},
+            test_a: {"imports": {prod_a}},
+        }
+        entries, potential = detect_test_coverage(graph, zone_map, "python")
+        trans = [e for e in entries if e["detail"]["kind"] == "transitive_only"]
+        assert len(trans) == 1
+        assert trans[0]["tier"] == 3
+
+    def test_transitive_summary_text(self, tmp_path):
+        """Transitive finding summary has clarified text."""
+        prod_a = _write_file(tmp_path, "a.py", "import b\n" + "# code\n" * 15)
+        prod_b = _write_file(tmp_path, "b.py", "# code\n" * 15)
+        test_a = _write_file(
+            tmp_path, "test_a.py",
+            "def test_a():\n    assert True\n    assert True\n    assert True\n",
+        )
+        all_files = [prod_a, prod_b, test_a]
+        zone_map = _make_zone_map(all_files)
+        graph = {
+            prod_a: {"imports": {prod_b}, "importer_count": 0},
+            prod_b: {"imports": set(), "importer_count": 1},
+            test_a: {"imports": {prod_a}},
+        }
+        entries, _ = detect_test_coverage(graph, zone_map, "python")
+        trans = [e for e in entries if e["detail"]["kind"] == "transitive_only"]
+        assert len(trans) == 1
+        assert "No direct tests" in trans[0]["summary"]
+        assert "covered only via imports from tested modules" in trans[0]["summary"]

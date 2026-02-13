@@ -1372,6 +1372,26 @@ class TestComputeStrategy:
         result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
         assert result["can_parallelize"] is True
 
+    def test_can_parallelize_ignores_insignificant_lanes(self):
+        """One tiny lane shouldn't block parallelism of larger lanes."""
+        findings = _findings_dict(
+            *[_finding("structural", file=f"file_{i}.py") for i in range(10)],
+            *[_finding("props", file=f"comp_{i}.tsx") for i in range(10)],
+            _finding("deprecated", file="tiny.ts"),  # 1 file, tiny lane
+        )
+        by_det = {"structural": 10, "props": 10, "deprecated": 1}
+        actions = [
+            {"priority": 1, "type": "refactor", "detector": "structural",
+             "count": 10, "impact": 5.0},
+            {"priority": 2, "type": "refactor", "detector": "props",
+             "count": 10, "impact": 3.0},
+            {"priority": 3, "type": "manual_fix", "detector": "deprecated",
+             "count": 1, "impact": 0.2},
+        ]
+        result = _compute_strategy(findings, by_det, actions, "middle_grind", "typescript")
+        # structural and props are significant, deprecated is not — still parallelizable
+        assert result["can_parallelize"] is True
+
     def test_can_parallelize_false_single_lane(self):
         findings = _findings_dict(
             _finding("structural", file="a.py"),

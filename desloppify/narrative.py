@@ -57,14 +57,9 @@ DETECTOR_TOOLS = {
 # Structural sub-detectors that merge under "structural" — shared constant
 STRUCTURAL_MERGE = {"large", "complexity", "gods", "concerns"}
 
-# Fixer cascade: fixing one detector may auto-resolve findings in another.
-# Maps fixer name → list of fixer names whose findings may be resolved.
-FIXER_CASCADE = {
-    "debug-logs": ["unused-imports"],
-    "dead-useeffect": ["unused-imports"],
-}
-# Detector-level cascade (derived from fixer cascade via DETECTOR_TOOLS).
-# Maps detector → list of detectors whose findings may be resolved.
+# Detector-level cascade: fixing one detector may auto-resolve findings in another.
+# Derived from fixer cascade (debug-logs→unused-imports, dead-useeffect→unused-imports).
+# Used to order cleanup lane so cascading fixers run first.
 _DETECTOR_CASCADE = {
     "logs": ["unused"],
     "smells": ["unused"],
@@ -1083,16 +1078,16 @@ def _compute_strategy(findings: dict, by_det: dict[str, int],
     for a in actions:
         a["lane"] = priority_to_lane.get(a["priority"])
 
-    # Determine parallelizability: 2+ non-blocked lanes each with meaningful work
+    # Determine parallelizability: 2+ significant non-blocked lanes
     non_blocked = [
         (name, lane) for name, lane in lanes.items()
         if not lane.get("run_first") and name != "debt_review"
     ]
-    can_parallelize = (
-        len(non_blocked) >= 2
-        and all(lane["file_count"] >= 5 or lane["total_impact"] >= 1.0
-                for _, lane in non_blocked)
-    )
+    significant = [
+        (name, lane) for name, lane in non_blocked
+        if lane["file_count"] >= 5 or lane["total_impact"] >= 1.0
+    ]
+    can_parallelize = len(significant) >= 2
 
     hint = _compute_strategy_hint(fixer_leverage, lanes, can_parallelize, phase)
 

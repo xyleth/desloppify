@@ -205,8 +205,15 @@ def cmd_scan(args):
     if lang and lang.file_finder:
         all_files = lang.file_finder(PROJECT_ROOT)
         scanned_files = lang.file_finder(path)
-        if all_files:
-            is_full_scan = len(scanned_files) >= 0.8 * len(all_files)
+        # Exclude test directories from the denominator — they're not source
+        # code the user is scanning, and adding tests shouldn't make the scan
+        # appear "partial".
+        test_prefixes = ("tests/", "test/")
+        source_files = [f for f in all_files
+                        if not any(f.startswith(p) for p in test_prefixes)]
+        denominator = source_files or all_files
+        if denominator:
+            is_full_scan = len(scanned_files) >= 0.8 * len(denominator)
         else:
             is_full_scan = True  # no files at all — vacuously full
     elif path.resolve() == PROJECT_ROOT.resolve():

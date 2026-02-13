@@ -165,6 +165,9 @@ def _import_based_mapping(
         elif mod.endswith(".ts") or mod.endswith(".tsx"):
             mod = mod.rsplit(".", 1)[0]
         prod_by_module[mod] = pf
+        # __init__.py: also map the package path (e.g. "desloppify.lang" → __init__.py)
+        if mod.endswith(".__init__"):
+            prod_by_module[mod[:-len(".__init__")]] = pf
         # Also map just the final module name: "utils" → path
         parts = mod.split(".")
         if parts:

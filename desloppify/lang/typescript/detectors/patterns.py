@@ -18,7 +18,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from ....utils import c, find_ts_files, get_area, print_table, rel
+from ....utils import PROJECT_ROOT, c, find_ts_files, get_area, print_table, rel
 
 # ── Pattern families ────────────────────────────────────────────
 #
@@ -97,7 +97,8 @@ def _build_census(path: Path) -> dict[str, dict[str, set[str]]]:
         try:
             rpath = rel(filepath)
             area = get_area(rpath)
-            content = Path(filepath).read_text()
+            p = Path(filepath) if Path(filepath).is_absolute() else PROJECT_ROOT / filepath
+            content = p.read_text()
         except (OSError, UnicodeDecodeError):
             continue
 

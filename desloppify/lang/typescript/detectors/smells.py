@@ -38,7 +38,7 @@ TS_SMELL_CHECKS = [
     {
         "id": "ts_ignore",
         "label": "@ts-ignore / @ts-expect-error",
-        "pattern": r"@ts-(?:ignore|expect-error)",
+        "pattern": r"//\s*@ts-(?:ignore|expect-error)",
         "severity": "medium",
     },
     {

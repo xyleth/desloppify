@@ -20,7 +20,7 @@ def _store_assessments(state: dict, assessments: dict, source: str):
     Holistic assessments overwrite per-file for the same dimension.
     Per-file assessments don't overwrite holistic.
     """
-    store = state.setdefault("review_assessments", {})
+    store = state.setdefault("subjective_assessments", {})
     now = _now()
 
     for dim_name, value in assessments.items():

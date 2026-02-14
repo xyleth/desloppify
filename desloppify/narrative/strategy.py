@@ -179,11 +179,6 @@ def _compute_lanes(actions: list[dict],
 
     # Mark cleanup lane as run_first if its files overlap with any other lane
     if "cleanup" in lanes:
-        cleanup_files_set: set[str] = set()
-        for a in cleanup_actions:
-            det = a.get("detector")
-            if det and det in files_by_det:
-                cleanup_files_set |= files_by_det[det]
         for name, lane in lanes.items():
             if name == "cleanup":
                 continue
@@ -193,7 +188,7 @@ def _compute_lanes(actions: list[dict],
                     det = a.get("detector")
                     if det and det in files_by_det:
                         lane_files |= files_by_det[det]
-            if cleanup_files_set & lane_files:
+            if cleanup_files & lane_files:
                 lanes["cleanup"]["run_first"] = True
                 break
 

@@ -1657,7 +1657,7 @@ class TestReviewReminders:
 
     def test_rereview_needed_after_resolve(self):
         state = self._base_state()
-        state["review_assessments"] = {"naming_quality": {"score": 70}}
+        state["subjective_assessments"] = {"naming_quality": {"score": 70}}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {}, [], {}, {}, "resolve")
         types = [r["type"] for r in reminders]
@@ -1667,7 +1667,7 @@ class TestReviewReminders:
 
     def test_no_rereview_when_not_resolve_command(self):
         state = self._base_state()
-        state["review_assessments"] = {"naming_quality": {"score": 70}}
+        state["subjective_assessments"] = {"naming_quality": {"score": 70}}
         reminders, _ = _compute_reminders(
             state, "typescript", "middle_grind", {}, [], {}, {}, "scan")
         types = [r["type"] for r in reminders]

@@ -59,8 +59,8 @@ def _resolve_lang(args):
     try:
         return get_lang(lang_name)
     except ValueError as e:
-        from ..utils import c
-        print(c(f"  {e}", "red"), file=sys.stderr)
-        print(c(f"  Hint: use --lang to select manually (e.g. --lang python)", "dim"),
+        from ..utils import colorize
+        print(colorize(f"  {e}", "red"), file=sys.stderr)
+        print(colorize(f"  Hint: use --lang to select manually (e.g. --lang python)", "dim"),
               file=sys.stderr)
         sys.exit(1)

@@ -99,7 +99,7 @@ def expire_stale_holistic(state: dict, max_age_days: int = 30) -> list[str]:
 
 def _render_issue_detail(finding: dict, lang_name: str,
                          number: int | None = None,
-                         review_assessments: dict | None = None) -> str:
+                         subjective_assessments: dict | None = None) -> str:
     """Render one finding as a markdown work order from state."""
     fid = finding["id"]
     detail = finding.get("detail", {})
@@ -128,9 +128,9 @@ def _render_issue_detail(finding: dict, lang_name: str,
     _w(f"**Score impact**: {label} (~{impact_pts:.1f} pts)\n")
 
     # Assessment context
-    if review_assessments:
+    if subjective_assessments:
         dim_key = detail.get("dimension", "")
-        assessment = review_assessments.get(dim_key)
+        assessment = subjective_assessments.get(dim_key)
         if assessment:
             source = assessment.get("source", "review")
             assessed_at = assessment.get("assessed_at", "")[:10]

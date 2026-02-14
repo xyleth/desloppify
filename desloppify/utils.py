@@ -180,15 +180,18 @@ COLORS = {
 NO_COLOR = os.environ.get("NO_COLOR") is not None
 
 
-def c(text: str, color: str) -> str:
+def colorize(text: str, color: str) -> str:
     if NO_COLOR or not sys.stdout.isatty():
         return str(text)
     return f"{COLORS.get(color, '')}{text}{COLORS['reset']}"
 
 
+c = colorize
+
+
 def log(msg: str):
     """Print a dim status message to stderr."""
-    print(c(msg, "dim"), file=sys.stderr)
+    print(colorize(msg, "dim"), file=sys.stderr)
 
 
 def print_table(headers: list[str], rows: list[list[str]], widths: list[int] | None = None):
@@ -197,8 +200,8 @@ def print_table(headers: list[str], rows: list[list[str]], widths: list[int] | N
     if not widths:
         widths = [max(len(str(h)), *(len(str(r[i])) for r in rows)) for i, h in enumerate(headers)]
     header_line = "  ".join(h.ljust(w) for h, w in zip(headers, widths))
-    print(c(header_line, "bold"))
-    print(c("─" * (sum(widths) + 2 * (len(widths) - 1)), "dim"))
+    print(colorize(header_line, "bold"))
+    print(colorize("─" * (sum(widths) + 2 * (len(widths) - 1)), "dim"))
     for row in rows:
         print("  ".join(str(v).ljust(w) for v, w in zip(row, widths)))
 
@@ -217,9 +220,9 @@ def display_entries(args, entries, *, label, empty_msg, columns, widths, row_fn,
         print(_json.dumps(payload, indent=2))
         return True
     if not entries:
-        print(c(empty_msg, "green"))
+        print(colorize(empty_msg, "green"))
         return False
-    print(c(f"\n{label}: {len(entries)}\n", "bold"))
+    print(colorize(f"\n{label}: {len(entries)}\n", "bold"))
     top = getattr(args, "top", 20)
     rows = [row_fn(e) for e in entries[:top]]
     print_table(columns, rows, widths)

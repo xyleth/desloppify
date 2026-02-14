@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ..utils import c, rel
+from ..utils import colorize, rel
 from ._helpers import _state_path
 from ..zones import Zone
 
@@ -17,7 +17,7 @@ def cmd_zone(args):
     elif action == "clear":
         _zone_clear(args)
     else:
-        print(c("Usage: desloppify zone {show|set|clear}", "red"))
+        print(colorize("Usage: desloppify zone {show|set|clear}", "red"))
 
 
 def _zone_show(args):
@@ -29,7 +29,7 @@ def _zone_show(args):
     load_state(sp)  # validate state file exists/loads
     lang = _resolve_lang(args)
     if not lang or not lang.file_finder:
-        print(c("No language detected — run a scan first.", "red"))
+        print(colorize("No language detected — run a scan first.", "red"))
         return
 
     path = Path(args.path)
@@ -46,24 +46,24 @@ def _zone_show(args):
         by_zone.setdefault(zone.value, []).append(f)
 
     total = len(files)
-    print(c(f"\nZone classifications ({total} files)\n", "bold"))
+    print(colorize(f"\nZone classifications ({total} files)\n", "bold"))
 
     for zone_val in ["production", "test", "config", "generated", "script", "vendor"]:
         zone_files = by_zone.get(zone_val, [])
         if not zone_files:
             continue
-        print(c(f"  {zone_val} ({len(zone_files)} files)", "bold"))
+        print(colorize(f"  {zone_val} ({len(zone_files)} files)", "bold"))
         for f in zone_files:
             rp = rel(f)
             is_override = rp in overrides
-            suffix = c(" (override)", "cyan") if is_override else ""
+            suffix = colorize(" (override)", "cyan") if is_override else ""
             print(f"    {rp}{suffix}")
         print()
 
     if overrides:
-        print(c(f"  {len(overrides)} override(s) active", "dim"))
-    print(c("  Override: desloppify zone set <file> <zone>", "dim"))
-    print(c("  Clear:    desloppify zone clear <file>", "dim"))
+        print(colorize(f"  {len(overrides)} override(s) active", "dim"))
+    print(colorize("  Override: desloppify zone set <file> <zone>", "dim"))
+    print(colorize("  Clear:    desloppify zone clear <file>", "dim"))
 
 
 def _zone_set(args):
@@ -76,14 +76,14 @@ def _zone_set(args):
     # Validate zone value
     valid_zones = {z.value for z in Zone}
     if zone_value not in valid_zones:
-        print(c(f"Invalid zone: {zone_value}. Valid: {', '.join(sorted(valid_zones))}", "red"))
+        print(colorize(f"Invalid zone: {zone_value}. Valid: {', '.join(sorted(valid_zones))}", "red"))
         return
 
     config = args._config
     config.setdefault("zone_overrides", {})[filepath] = zone_value
     save_config(config)
     print(f"  Set {filepath} → {zone_value}")
-    print(c("  Run `desloppify scan` to apply.", "dim"))
+    print(colorize("  Run `desloppify scan` to apply.", "dim"))
 
 
 def _zone_clear(args):
@@ -97,6 +97,6 @@ def _zone_clear(args):
         del overrides[filepath]
         save_config(args._config)
         print(f"  Cleared override for {filepath}")
-        print(c("  Run `desloppify scan` to apply.", "dim"))
+        print(colorize("  Run `desloppify scan` to apply.", "dim"))
     else:
-        print(c(f"  No override found for {filepath}", "yellow"))
+        print(colorize(f"  No override found for {filepath}", "yellow"))

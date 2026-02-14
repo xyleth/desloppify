@@ -6,12 +6,14 @@ from desloppify.lang.typescript.detectors._smell_helpers import (
     _strip_ts_comments,
     _ts_match_is_in_string,
     _track_brace_body,
-    _find_function_start,
     _detect_async_no_await,
     _detect_error_no_throw,
     _detect_empty_if_chains,
     _detect_dead_useeffects,
     _detect_swallowed_errors,
+)
+from desloppify.lang.typescript.detectors._smell_detectors import (
+    _find_function_start,
     _detect_monster_functions,
     _detect_dead_functions,
     _detect_window_globals,

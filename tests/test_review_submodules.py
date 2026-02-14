@@ -292,32 +292,32 @@ class TestStoreAssessments:
     def test_stores_basic(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 80}, "per_file")
-        assert empty_state["review_assessments"]["naming"]["score"] == 80
-        assert empty_state["review_assessments"]["naming"]["source"] == "per_file"
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 80
+        assert empty_state["subjective_assessments"]["naming"]["source"] == "per_file"
 
     def test_holistic_overwrites_per_file(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 60}, "per_file")
         _store_assessments(empty_state, {"naming": 90}, "holistic")
-        assert empty_state["review_assessments"]["naming"]["score"] == 90
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 90
 
     def test_per_file_no_overwrite_holistic(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 90}, "holistic")
         _store_assessments(empty_state, {"naming": 60}, "per_file")
-        assert empty_state["review_assessments"]["naming"]["score"] == 90
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 90
 
     def test_clamps_score(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": 200}, "per_file")
-        assert empty_state["review_assessments"]["naming"]["score"] == 100
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 100
         _store_assessments(empty_state, {"naming": -50}, "holistic")
-        assert empty_state["review_assessments"]["naming"]["score"] == 0
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 0
 
     def test_dict_value_format(self, empty_state):
         from desloppify.review.import_findings import _store_assessments
         _store_assessments(empty_state, {"naming": {"score": 75, "extra": "data"}}, "per_file")
-        assert empty_state["review_assessments"]["naming"]["score"] == 75
+        assert empty_state["subjective_assessments"]["naming"]["score"] == 75
 
 
 class TestImportReviewFindings:

@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from ..utils import c
+from ..utils import colorize
 
 
 def cmd_review(args):
@@ -17,7 +17,7 @@ def cmd_review(args):
     lang = _resolve_lang(args)
 
     if not lang:
-        print(c("  Error: could not detect language. Use --lang.", "red"), file=sys.stderr)
+        print(colorize("  Error: could not detect language. Use --lang.", "red"), file=sys.stderr)
         sys.exit(1)
 
     import_file = getattr(args, "import_file", None)
@@ -56,16 +56,16 @@ def _do_prepare(args, state, lang, sp, holistic=False):
         _write_query(data)
         total = data.get("total_files", 0)
         batches = data.get("investigation_batches", [])
-        print(c(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
+        print(colorize(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
         if batches:
-            print(c(f"\n  Investigation batches (independent — can run in parallel):", "bold"))
+            print(colorize(f"\n  Investigation batches (independent — can run in parallel):", "bold"))
             for i, batch in enumerate(batches, 1):
                 n_files = len(batch["files_to_read"])
-                print(c(f"    {i}. {batch['name']} ({n_files} files) — {batch['why']}", "dim"))
-        print(c(f"\n  Workflow:", "bold"))
+                print(colorize(f"    {i}. {batch['name']} ({n_files} files) — {batch['why']}", "dim"))
+        print(colorize(f"\n  Workflow:", "bold"))
         for step_i, step in enumerate(data.get("workflow", []), 1):
-            print(c(f"    {step_i}. {step}", "dim"))
-        print(c(f"\n  \u2192 query.json updated. "
+            print(colorize(f"    {step_i}. {step}", "dim"))
+        print(colorize(f"\n  \u2192 query.json updated. "
                 f"Review codebase, then: desloppify review --import findings.json --holistic", "cyan"))
     else:
         from ..review import prepare_review
@@ -83,12 +83,12 @@ def _do_prepare(args, state, lang, sp, holistic=False):
         )
         data["narrative"] = narrative
         _write_query(data)
-        print(c(f"\n  Review prepared: {data['total_candidates']} files to review", "bold"))
-        print(c(f"  Cache: {data['cache_status']['fresh']} fresh, "
+        print(colorize(f"\n  Review prepared: {data['total_candidates']} files to review", "bold"))
+        print(colorize(f"  Cache: {data['cache_status']['fresh']} fresh, "
                 f"{data['cache_status']['stale']} stale, "
                 f"{data['cache_status']['new']} new", "dim"))
-        print(c(f"  Dimensions: {', '.join(data['dimensions'])}", "dim"))
-        print(c(f"\n  \u2192 query.json updated. "
+        print(colorize(f"  Dimensions: {', '.join(data['dimensions'])}", "dim"))
+        print(colorize(f"\n  \u2192 query.json updated. "
                 f"Review files, then: desloppify review --import findings.json", "cyan"))
 
 
@@ -100,25 +100,25 @@ def _do_import(import_file, state, lang, sp, holistic=False):
 
     findings_path = Path(import_file)
     if not findings_path.exists():
-        print(c(f"  Error: file not found: {import_file}", "red"), file=sys.stderr)
+        print(colorize(f"  Error: file not found: {import_file}", "red"), file=sys.stderr)
         sys.exit(1)
 
     try:
         findings_data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError) as e:
-        print(c(f"  Error reading findings: {e}", "red"), file=sys.stderr)
+        print(colorize(f"  Error reading findings: {e}", "red"), file=sys.stderr)
         sys.exit(1)
 
     # Accept both legacy (list) and new format (dict with assessments + findings)
     if isinstance(findings_data, dict):
         if "findings" not in findings_data:
-            print(c("  Error: findings object must contain a 'findings' key", "red"), file=sys.stderr)
+            print(colorize("  Error: findings object must contain a 'findings' key", "red"), file=sys.stderr)
             sys.exit(1)
     elif isinstance(findings_data, list):
         # Legacy format: bare array of findings
         findings_data = {"findings": findings_data}
     else:
-        print(c("  Error: findings file must contain a JSON array or object", "red"), file=sys.stderr)
+        print(colorize("  Error: findings file must contain a JSON array or object", "red"), file=sys.stderr)
         sys.exit(1)
 
     if holistic:
@@ -137,15 +137,15 @@ def _do_import(import_file, state, lang, sp, holistic=False):
     _write_query({"command": "review", "action": "import", "mode": "holistic" if holistic else "per_file",
                   "diff": diff, "narrative": narrative})
 
-    print(c(f"\n  {label} imported:", "bold"))
-    print(c(f"  +{diff['new']} new findings, "
+    print(colorize(f"\n  {label} imported:", "bold"))
+    print(colorize(f"  +{diff['new']} new findings, "
             f"{diff['auto_resolved']} resolved, "
             f"{diff['reopened']} reopened", "dim"))
 
     # Warn about skipped findings so agent can fix their output
     n_skipped = diff.get("skipped", 0)
     if n_skipped > 0:
-        print(c(f"\n  \u26a0 {n_skipped} finding(s) skipped (validation errors):", "yellow"))
+        print(colorize(f"\n  \u26a0 {n_skipped} finding(s) skipped (validation errors):", "yellow"))
         for detail in diff.get("skipped_details", []):
             reasons = detail['missing']
             # Separate actual missing fields from validation errors
@@ -155,24 +155,24 @@ def _do_import(import_file, state, lang, sp, holistic=False):
             if missing_fields:
                 parts.append(f"missing {', '.join(missing_fields)}")
             parts.extend(validation_errors)
-            print(c(f"    #{detail['index']} ({detail['identifier']}): "
+            print(colorize(f"    #{detail['index']} ({detail['identifier']}): "
                     f"{'; '.join(parts)}", "yellow"))
 
     # Show assessment summary if any were stored
-    assessments = state.get("review_assessments", {})
+    assessments = state.get("subjective_assessments") or state.get("review_assessments") or {}
     if assessments:
         parts = [f"{k.replace('_', ' ')} {v['score']}" for k, v in sorted(assessments.items())]
-        print(c(f"\n  Assessments: {', '.join(parts)}", "bold"))
+        print(colorize(f"\n  Assessments: {', '.join(parts)}", "bold"))
 
     open_review = [f for f in state["findings"].values()
                    if f["status"] == "open" and f.get("detector") == "review"]
     if open_review:
-        print(c(f"\n  {len(open_review)} review finding{'s' if len(open_review) != 1 else ''} open total", "bold"))
-        print(c(f"  Run `desloppify issues` to see the work queue", "dim"))
+        print(colorize(f"\n  {len(open_review)} review finding{'s' if len(open_review) != 1 else ''} open total", "bold"))
+        print(colorize(f"  Run `desloppify issues` to see the work queue", "dim"))
 
     obj_score = state.get("objective_score") or 0
     if obj_score:
-        print(c(f"\n  Current score: {obj_score:.1f}/100", "dim"))
+        print(colorize(f"\n  Current score: {obj_score:.1f}/100", "dim"))
 
 
 def _setup_lang(lang, path: Path, config: dict) -> list[str]:

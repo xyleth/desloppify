@@ -1,4 +1,4 @@
-"""Tests for review coverage detector, ID collision fix, and new review dimensions."""
+"""Tests for review coverage detector, ID collision fix, and new subjective dimensions."""
 
 from __future__ import annotations
 
@@ -364,17 +364,17 @@ class TestIDCollision:
         assert id1 == id2
 
 
-# ── Part C: New review dimensions ────────────────────────────────
+# ── Part C: New subjective dimensions ────────────────────────────
 
 
 class TestNewDimensions:
     """3 new dimensions present in DEFAULT_DIMENSIONS and DIMENSION_PROMPTS."""
 
-    def test_type_safety_in_defaults(self):
-        assert "type_safety" in DEFAULT_DIMENSIONS
+    def test_abstraction_fitness_in_defaults(self):
+        assert "abstraction_fitness" in DEFAULT_DIMENSIONS
 
-    def test_cross_module_architecture_in_defaults(self):
-        assert "cross_module_architecture" in DEFAULT_DIMENSIONS
+    def test_error_consistency_in_defaults(self):
+        assert "error_consistency" in DEFAULT_DIMENSIONS
 
     def test_type_safety_prompt(self):
         assert "type_safety" in DIMENSION_PROMPTS
@@ -411,14 +411,14 @@ class TestRegistryIntegration:
     def test_subjective_review_in_registry(self):
         assert "subjective_review" in DETECTORS
         meta = DETECTORS["subjective_review"]
-        assert meta.dimension == "Audit coverage"
+        assert meta.dimension == "Test health"
         assert meta.action_type == "manual_fix"
 
     def test_subjective_review_in_display_order(self):
         assert "subjective_review" in _DISPLAY_ORDER
 
     def test_subjective_review_in_scoring_dimensions(self):
-        review_dim = next(d for d in DIMENSIONS if d.name == "Audit coverage")
+        review_dim = next(d for d in DIMENSIONS if d.name == "Test health")
         assert "subjective_review" in review_dim.detectors
 
     def test_subjective_review_is_file_based(self):

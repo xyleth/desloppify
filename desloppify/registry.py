@@ -25,15 +25,15 @@ class DetectorMeta:
 DETECTORS: dict[str, DetectorMeta] = {
     # ── Auto-fixable ──────────────────────────────────────
     "unused": DetectorMeta(
-        "unused", "unused", "Import hygiene", "auto_fix",
+        "unused", "unused", "Code quality", "auto_fix",
         "remove unused imports and variables",
         fixers=("unused-imports", "unused-vars", "unused-params")),
     "logs": DetectorMeta(
-        "logs", "logs", "Debug cleanliness", "auto_fix",
+        "logs", "logs", "Code quality", "auto_fix",
         "remove debug logs",
         fixers=("debug-logs",)),
     "exports": DetectorMeta(
-        "exports", "exports", "API surface", "auto_fix",
+        "exports", "exports", "Code quality", "auto_fix",
         "remove dead exports",
         fixers=("dead-exports",)),
     "smells": DetectorMeta(
@@ -42,31 +42,31 @@ DETECTORS: dict[str, DetectorMeta] = {
         fixers=("dead-useeffect", "empty-if-chain")),
     # ── Reorganize (move tool) ────────────────────────────
     "orphaned": DetectorMeta(
-        "orphaned", "orphaned", "Organization", "reorganize",
+        "orphaned", "orphaned", "Code quality", "reorganize",
         "delete dead files or relocate with `desloppify move`",
         tool="move"),
     "flat_dirs": DetectorMeta(
-        "flat_dirs", "flat dirs", "Organization", "reorganize",
+        "flat_dirs", "flat dirs", "Code quality", "reorganize",
         "create subdirectories and use `desloppify move`",
         tool="move"),
     "naming": DetectorMeta(
-        "naming", "naming", "Organization", "reorganize",
+        "naming", "naming", "Code quality", "reorganize",
         "rename files with `desloppify move` to fix conventions",
         tool="move"),
     "single_use": DetectorMeta(
-        "single_use", "single_use", "Coupling", "reorganize",
+        "single_use", "single_use", "Code quality", "reorganize",
         "inline or relocate with `desloppify move`",
         tool="move"),
     "coupling": DetectorMeta(
-        "coupling", "coupling", "Coupling", "reorganize",
+        "coupling", "coupling", "Code quality", "reorganize",
         "fix boundary violations with `desloppify move`",
         tool="move"),
     "cycles": DetectorMeta(
-        "cycles", "cycles", "Dependency health", "reorganize",
+        "cycles", "cycles", "Security", "reorganize",
         "break cycles by extracting shared code or using `desloppify move`",
         tool="move"),
     "facade": DetectorMeta(
-        "facade", "facade", "Organization", "reorganize",
+        "facade", "facade", "Code quality", "reorganize",
         "flatten re-export facades or consolidate barrel files",
         tool="move"),
     # ── Refactor ──────────────────────────────────────────
@@ -74,7 +74,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "structural", "structural", "File health", "refactor",
         "decompose large files — extract logic into focused modules"),
     "props": DetectorMeta(
-        "props", "props", "Component design", "refactor",
+        "props", "props", "Code quality", "refactor",
         "split bloated components, extract sub-components"),
     "react": DetectorMeta(
         "react", "react", "Code quality", "refactor",
@@ -83,7 +83,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "dupes", "dupes", "Duplication", "refactor",
         "extract shared utility or consolidate duplicates"),
     "patterns": DetectorMeta(
-        "patterns", "patterns", "Pattern consistency", "refactor",
+        "patterns", "patterns", "Code quality", "refactor",
         "align to single pattern across the codebase"),
     "dict_keys": DetectorMeta(
         "dict_keys", "dict keys", "Code quality", "refactor",
@@ -100,20 +100,20 @@ DETECTORS: dict[str, DetectorMeta] = {
         "refactor module-level mutable state — use explicit init functions or dependency injection"),
     # ── Manual fix ────────────────────────────────────────
     "deprecated": DetectorMeta(
-        "deprecated", "deprecated", "API surface", "manual_fix",
+        "deprecated", "deprecated", "Code quality", "manual_fix",
         "remove deprecated symbols or migrate callers"),
     "stale_exclude": DetectorMeta(
-        "stale_exclude", "stale exclude", "Organization", "manual_fix",
+        "stale_exclude", "stale exclude", "Code quality", "manual_fix",
         "remove stale exclusion or verify it's still needed"),
     "security": DetectorMeta(
         "security", "security", "Security", "manual_fix",
         "review and fix security findings — prioritize by severity"),
     # ── Subjective review ────────────────────────────────────
     "review": DetectorMeta(
-        "review", "design review", "Audit coverage", "refactor",
+        "review", "design review", "Test health", "refactor",
         "address design quality findings from AI code review"),
     "subjective_review": DetectorMeta(
-        "subjective_review", "subjective review", "Audit coverage", "manual_fix",
+        "subjective_review", "subjective review", "Test health", "manual_fix",
         "run `desloppify fix review` to evaluate files against quality dimensions"),
 }
 

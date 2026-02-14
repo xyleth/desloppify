@@ -2,7 +2,7 @@
 
 import sys
 
-from ..utils import c
+from ..utils import colorize
 from ._helpers import _state_path, _write_query
 
 
@@ -11,7 +11,7 @@ def cmd_resolve(args):
     from ..state import load_state, save_state, resolve_findings
 
     if args.status == "wontfix" and not args.note:
-        print(c("Wontfix items become technical debt. Add --note to record your reasoning for future review.", "yellow"))
+        print(colorize("Wontfix items become technical debt. Add --note to record your reasoning for future review.", "yellow"))
         sys.exit(1)
 
     sp = _state_path(args)
@@ -25,12 +25,12 @@ def cmd_resolve(args):
         all_resolved.extend(resolved)
 
     if not all_resolved:
-        print(c(f"No open findings matching: {' '.join(args.patterns)}", "yellow"))
+        print(colorize(f"No open findings matching: {' '.join(args.patterns)}", "yellow"))
         return
 
     save_state(state, sp)
 
-    print(c(f"\nResolved {len(all_resolved)} finding(s) as {args.status}:", "green"))
+    print(colorize(f"\nResolved {len(all_resolved)} finding(s) as {args.status}:", "green"))
     for fid in all_resolved[:20]:
         print(f"  {fid}")
     if len(all_resolved) > 20:
@@ -42,19 +42,19 @@ def cmd_resolve(args):
         delta = new_obj - (prev_obj or 0)
         delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
         print(f"\n  Health: {new_obj:.1f}/100{delta_str}" +
-              c(f"  (strict: {new_obj_strict:.1f}/100)", "dim"))
+              colorize(f"  (strict: {new_obj_strict:.1f}/100)", "dim"))
     else:
         delta = state["score"] - prev_score
         delta_str = f" ({'+' if delta > 0 else ''}{delta:.1f})" if abs(delta) >= 0.05 else ""
         print(f"\n  Score: {state['score']:.1f}/100{delta_str}" +
-              c(f"  (strict: {state.get('strict_score', 0):.1f}/100)", "dim"))
+              colorize(f"  (strict: {state.get('strict_score', 0):.1f}/100)", "dim"))
 
     # When resolving review findings with active assessments, the score
     # is driven by assessments, not finding status — nudge re-review.
     has_review = any(state["findings"].get(fid, {}).get("detector") == "review"
                      for fid in all_resolved)
-    if has_review and state.get("review_assessments"):
-        print(c("  Score unchanged — re-run `desloppify review` to update assessment scores.", "yellow"))
+    if has_review and (state.get("subjective_assessments") or state.get("review_assessments")):
+        print(colorize("  Score unchanged — re-run `desloppify review` to update subjective scores.", "yellow"))
 
     # Computed narrative: milestone + context for LLM
     from ..narrative import compute_narrative
@@ -63,13 +63,13 @@ def cmd_resolve(args):
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="resolve")
     if narrative.get("milestone"):
-        print(c(f"  → {narrative['milestone']}", "green"))
+        print(colorize(f"  → {narrative['milestone']}", "green"))
 
     remaining = sum(1 for f in state["findings"].values()
                     if f["status"] == "open" and f.get("detector") == "review")
     if remaining > 0:
         s = "s" if remaining != 1 else ""
-        print(c(f"\n  {remaining} review finding{s} remaining — run `desloppify issues`", "dim"))
+        print(colorize(f"\n  {remaining} review finding{s} remaining — run `desloppify issues`", "dim"))
     print()
 
     _write_query({"command": "resolve", "patterns": args.patterns, "status": args.status,
@@ -96,11 +96,11 @@ def cmd_ignore_pattern(args):
     removed = remove_ignored_findings(state, args.pattern)
     save_state(state, sp)
 
-    print(c(f"Added ignore pattern: {args.pattern}", "green"))
+    print(colorize(f"Added ignore pattern: {args.pattern}", "green"))
     if removed:
         print(f"  Removed {removed} matching findings from state.")
     print(f"  Score: {state['score']}/100" +
-          c(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
+          colorize(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
     print()
 
     from ..narrative import compute_narrative

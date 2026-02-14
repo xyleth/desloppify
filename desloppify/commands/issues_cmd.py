@@ -2,7 +2,7 @@
 
 import sys
 
-from ..utils import c
+from ..utils import colorize
 from ._helpers import _write_query
 
 
@@ -25,14 +25,14 @@ def _list_issues(args):
     items = list_open_review_findings(state)
 
     if not items:
-        print(c("\n  No review findings open.\n", "dim"))
+        print(colorize("\n  No review findings open.\n", "dim"))
         _write_query({"command": "issues", "action": "list", "items": []})
         return
 
-    print(c(f"\n  {len(items)} open review finding{'s' if len(items) != 1 else ''} "
+    print(colorize(f"\n  {len(items)} open review finding{'s' if len(items) != 1 else ''} "
             f"(highest impact first)\n", "bold"))
 
-    assessments = state.get("review_assessments", {})
+    assessments = state.get("subjective_assessments") or state.get("review_assessments") or {}
     # Table header
     print(f"  {'#':<4} {'Score':<8} {'Dimension':<28} {'Summary':<50} {'Investigated'}")
     print(f"  {'─'*4} {'─'*8} {'─'*28} {'─'*50} {'─'*12}")
@@ -55,8 +55,8 @@ def _list_issues(args):
     uninvestigated = sum(1 for f in items if not f.get("detail", {}).get("investigation"))
     print()
     if uninvestigated:
-        print(c(f"  {uninvestigated} need investigation.", "dim"))
-    print(c(f"  Show details: desloppify issues show 1", "dim"))
+        print(colorize(f"  {uninvestigated} need investigation.", "dim"))
+    print(colorize(f"  Show details: desloppify issues show 1", "dim"))
     print()
 
     _write_query({
@@ -79,11 +79,11 @@ def _show_issue(args):
     number = args.number
 
     if not items:
-        print(c("\n  No review findings open.\n", "dim"))
+        print(colorize("\n  No review findings open.\n", "dim"))
         return
 
     if number < 1 or number > len(items):
-        print(c(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
+        print(colorize(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
               file=sys.stderr)
         return
 
@@ -91,9 +91,9 @@ def _show_issue(args):
     lang = _resolve_lang(args)
     lang_name = lang.name if lang else "typescript"
 
-    assessments = state.get("review_assessments", {})
+    assessments = state.get("subjective_assessments") or state.get("review_assessments") or {}
     doc = _render_issue_detail(finding, lang_name, number=number,
-                                review_assessments=assessments)
+                                subjective_assessments=assessments)
     print()
     print(doc)
 
@@ -118,34 +118,34 @@ def _update_issue(args):
     number = args.number
 
     if not items:
-        print(c("\n  No review findings open.\n", "dim"))
+        print(colorize("\n  No review findings open.\n", "dim"))
         return
 
     if number < 1 or number > len(items):
-        print(c(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
+        print(colorize(f"\n  Issue #{number} out of range (1–{len(items)}).\n", "red"),
               file=sys.stderr)
         return
 
     file_path = Path(args.file)
     if not file_path.exists():
-        print(c(f"\n  File not found: {args.file}\n", "red"), file=sys.stderr)
+        print(colorize(f"\n  File not found: {args.file}\n", "red"), file=sys.stderr)
         return
 
     try:
         text = file_path.read_text()
     except OSError as e:
-        print(c(f"\n  Could not read file: {e}\n", "red"), file=sys.stderr)
+        print(colorize(f"\n  Could not read file: {e}\n", "red"), file=sys.stderr)
         return
 
     finding = items[number - 1]
     ok = update_investigation(state, finding["id"], text)
     if not ok:
-        print(c(f"\n  Could not update issue #{number}.\n", "red"), file=sys.stderr)
+        print(colorize(f"\n  Could not update issue #{number}.\n", "red"), file=sys.stderr)
         return
 
     save_state(state, sp)
     lang = _resolve_lang(args)
     lang_name = lang.name if lang else "typescript"
-    print(c(f"\n  Investigation saved for issue #{number}.", "green"))
-    print(c(f"  Fix the issue, then: desloppify --lang {lang_name} resolve fixed \"{finding['id']}\"", "dim"))
+    print(colorize(f"\n  Investigation saved for issue #{number}.", "green"))
+    print(colorize(f"  Fix the issue, then: desloppify --lang {lang_name} resolve fixed \"{finding['id']}\"", "dim"))
     print()

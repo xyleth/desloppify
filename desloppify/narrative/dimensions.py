@@ -34,12 +34,12 @@ def _analyze_dimensions(dim_scores: dict, history: list[dict],
                      for k, v in dim_scores.items()},
                     potentials, det, det_data["issues"])
                 impact = max(impact, imp)
-        # Assessment dimensions have "review_assessment" as their only detector
-        is_assessment = "review_assessment" in ds.get("detectors", {})
+        # Subjective dimensions have "subjective_assessment" as their only detector
+        is_subjective = "subjective_assessment" in ds.get("detectors", {})
         entry = {"name": name, "strict": round(strict, 1),
                  "issues": issues, "impact": round(impact, 1)}
-        if is_assessment:
-            entry["assessment"] = True
+        if is_subjective:
+            entry["subjective"] = True
             entry["impact_description"] = "re-review to improve"
         lowest.append(entry)
 

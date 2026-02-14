@@ -34,7 +34,7 @@ def _compute_reminders(state: dict, lang: str | None,
                        phase: str, debt: dict, actions: list[dict],
                        dimensions: dict, badge: dict,
                        command: str | None,
-                       config: dict | None = None) -> list[dict]:
+                       config: dict | None = None) -> tuple[list[dict], dict]:
     """Compute context-specific reminders, suppressing those shown too many times."""
     reminders = []
     obj_strict = state.get("objective_strict")
@@ -133,8 +133,7 @@ def _compute_reminders(state: dict, lang: str | None,
             })
 
     # 9a. Review findings pending — uninvestigated review findings need attention
-    from ..state import path_scoped_findings as _psf
-    open_review = [f for f in _psf(state.get("findings", {}), state.get("scan_path")).values()
+    open_review = [f for f in path_scoped_findings(state.get("findings", {}), state.get("scan_path")).values()
                    if f.get("status") == "open" and f.get("detector") == "review"]
     if open_review:
         uninvestigated = [f for f in open_review
@@ -148,7 +147,7 @@ def _compute_reminders(state: dict, lang: str | None,
             })
 
     # 9b. Re-review needed after resolve when assessments exist
-    if command == "resolve" and state.get("review_assessments"):
+    if command == "resolve" and (state.get("subjective_assessments") or state.get("review_assessments")):
         reminders.append({
             "type": "rereview_needed",
             "message": "Score is driven by assessments \u2014 re-run "
@@ -225,7 +224,7 @@ def _compute_reminders(state: dict, lang: str | None,
             "type": "report_scores",
             "message": ("ALWAYS share ALL scores with the user: overall health "
                         "(lenient + strict), every dimension score (lenient + strict), "
-                        "and all review dimension scores. The goal is to maximize strict scores."),
+                        "and all subjective dimension scores. The goal is to maximize strict scores."),
             "command": None,
             "no_decay": True,
         })

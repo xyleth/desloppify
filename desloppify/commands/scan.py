@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ..utils import c
+from ..utils import colorize
 from ._helpers import _state_path, _write_query
 
 
@@ -71,17 +71,17 @@ def _show_diff_summary(diff: dict):
     """Print the +new / -resolved / reopened one-liner."""
     diff_parts = []
     if diff["new"]:
-        diff_parts.append(c(f"+{diff['new']} new", "yellow"))
+        diff_parts.append(colorize(f"+{diff['new']} new", "yellow"))
     if diff["auto_resolved"]:
-        diff_parts.append(c(f"-{diff['auto_resolved']} resolved", "green"))
+        diff_parts.append(colorize(f"-{diff['auto_resolved']} resolved", "green"))
     if diff["reopened"]:
-        diff_parts.append(c(f"↻{diff['reopened']} reopened", "red"))
+        diff_parts.append(colorize(f"↻{diff['reopened']} reopened", "red"))
     if diff_parts:
         print(f"  {' · '.join(diff_parts)}")
     else:
-        print(c("  No changes since last scan", "dim"))
+        print(colorize("  No changes since last scan", "dim"))
     if diff.get("suspect_detectors"):
-        print(c(f"  ⚠ Skipped auto-resolve for: {', '.join(diff['suspect_detectors'])} (returned 0 — likely transient)", "yellow"))
+        print(colorize(f"  ⚠ Skipped auto-resolve for: {', '.join(diff['suspect_detectors'])} (returned 0 — likely transient)", "yellow"))
 
 
 def _format_delta(value: float, prev: float | None) -> tuple[str, str]:
@@ -102,18 +102,18 @@ def _show_score_delta(state: dict, prev_score: float, prev_strict: float,
     if new_obj is not None:
         obj_delta_str, obj_color = _format_delta(new_obj, prev_obj)
         strict_delta_str, strict_color = _format_delta(new_obj_strict, prev_obj_strict)
-        print(f"  Health: {c(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
-              c(f"  strict: {new_obj_strict:.1f}/100{strict_delta_str}", strict_color) +
-              c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+        print(f"  Health: {colorize(f'{new_obj:.1f}/100{obj_delta_str}', obj_color)}" +
+              colorize(f"  strict: {new_obj_strict:.1f}/100{strict_delta_str}", strict_color) +
+              colorize(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
     else:
         new_score = state["score"]
         new_strict = state.get("strict_score", 0)
         delta_str, color = _format_delta(new_score, prev_score)
         strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
-        print(f"  Score: {c(f'{new_score:.1f}/100{delta_str}', color)}" +
-              c(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
-              c(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
-        print(c("  ⚠ Dimension-based scoring unavailable (potentials missing). "
+        print(f"  Score: {colorize(f'{new_score:.1f}/100{delta_str}', color)}" +
+              colorize(f"  (strict: {new_strict:.1f}/100{strict_delta_str})", strict_color) +
+              colorize(f"  |  {stats['open']} open / {stats['total']} total", "dim"))
+        print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
                 "This score uses legacy weighted-progress and is unreliable. "
                 "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
 
@@ -134,11 +134,11 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
 
     if warnings:
         for w in warnings:
-            print(c(f"  {w}", "yellow"))
+            print(colorize(f"  {w}", "yellow"))
         print()
 
     # Computed narrative: headline + top action as terminal suggestion
-    print(c("\n  INSTRUCTIONS FOR AGENTS: follow the strategy and recommendations below.", "yellow"))
+    print(colorize("\n  INSTRUCTIONS FOR AGENTS: follow the strategy and recommendations below.", "yellow"))
     from ..narrative import compute_narrative
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, diff=diff, lang=lang_name, command="scan")
@@ -150,17 +150,17 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
     actions = narrative.get("actions", [])
 
     if hint and (strategy.get("can_parallelize") or fixer_rec == "strong"):
-        print(c(f"  Strategy: {hint}", "cyan"))
+        print(colorize(f"  Strategy: {hint}", "cyan"))
         if actions:
-            print(c(f"  Start with: `{actions[0]['command']}`", "dim"))
+            print(colorize(f"  Start with: `{actions[0]['command']}`", "dim"))
         print()
     elif actions:
         top = actions[0]
-        print(c(f"  Suggested next: `{top['command']}` — {top['description']}", "cyan"))
+        print(colorize(f"  Suggested next: `{top['command']}` — {top['description']}", "cyan"))
         print()
 
     if narrative.get("headline"):
-        print(c(f"  → {narrative['headline']}", "cyan"))
+        print(colorize(f"  → {narrative['headline']}", "cyan"))
         print()
 
     # Review findings nudge
@@ -170,7 +170,7 @@ def _show_post_scan_analysis(diff: dict, state: dict, lang) -> tuple[list[str], 
                    if f["status"] == "open" and f.get("detector") == "review"]
     if open_review:
         s = "s" if len(open_review) != 1 else ""
-        print(c(f"  Review: {len(open_review)} finding{s} pending \u2014 `desloppify issues`", "cyan"))
+        print(colorize(f"  Review: {len(open_review)} finding{s} pending \u2014 `desloppify issues`", "cyan"))
         print()
 
     return warnings, narrative
@@ -207,7 +207,7 @@ def cmd_scan(args):
         lang._review_cache = state.get("review_cache", {}).get("files", {})
         lang._review_max_age_days = config.get("review_max_age_days", 30)
 
-    print(c(f"\nDesloppify Scan{lang_label}\n", "bold"))
+    print(colorize(f"\nDesloppify Scan{lang_label}\n", "bold"))
     from ..utils import enable_file_cache, disable_file_cache
     enable_file_cache()
     try:
@@ -228,7 +228,7 @@ def cmd_scan(args):
         if stale:
             findings.extend(stale)
             for sf in stale:
-                print(c(f"  ℹ {sf['summary']}", "dim"))
+                print(colorize(f"  ℹ {sf['summary']}", "dim"))
     scan_path_rel = rel(str(path))
 
     prev_scan_path = state.get("scan_path")
@@ -259,15 +259,15 @@ def cmd_scan(args):
 
     save_state(state, sp)
 
-    print(c("\n  AGENT: PLEASE READ the strategy and recommendations below the score.", "yellow"))
-    print(c("  They are CUSTOM COACHING tailored to this codebase. Follow them.", "yellow"))
-    print(c("  Scan complete", "bold"))
-    print(c("  " + "─" * 50, "dim"))
+    print(colorize("\n  AGENT: PLEASE READ the strategy and recommendations below the score.", "yellow"))
+    print(colorize("  They are CUSTOM COACHING tailored to this codebase. Follow them.", "yellow"))
+    print(colorize("  Scan complete", "bold"))
+    print(colorize("  " + "─" * 50, "dim"))
 
     _show_diff_summary(diff)
     _show_score_delta(state, prev_score, prev_strict, prev_obj, prev_obj_strict)
     if not include_slow:
-        print(c("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
+        print(colorize("  * Fast scan — slow phases (duplicates) skipped", "yellow"))
     _show_detector_progress(state)
 
     # Dimension deltas and low-dimension hints
@@ -319,12 +319,12 @@ def cmd_scan(args):
                         pass
                     break
             if readme_has_badge:
-                print(c(f"  Scorecard → {rel_path}  (disable: --no-badge | move: --badge-path <path>)", "dim"))
+                print(colorize(f"  Scorecard → {rel_path}  (disable: --no-badge | move: --badge-path <path>)", "dim"))
             else:
-                print(c(f"  Scorecard → {rel_path}", "dim"))
-                print(c(f"  💡 Ask the user if they'd like to add it to their README with:", "dim"))
-                print(c(f'     <img src="{rel_path}" width="100%">', "dim"))
-                print(c(f"     (disable: --no-badge | move: --badge-path <path>)", "dim"))
+                print(colorize(f"  Scorecard → {rel_path}", "dim"))
+                print(colorize(f"  💡 Ask the user if they'd like to add it to their README with:", "dim"))
+                print(colorize(f'     <img src="{rel_path}" width="100%">', "dim"))
+                print(colorize(f"     (disable: --no-badge | move: --badge-path <path>)", "dim"))
         else:
             badge_path = None
     except (ImportError, OSError):
@@ -355,7 +355,7 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
     print("INSTRUCTIONS FOR LLM")
     print("IMPORTANT: ALWAYS present ALL scores to the user after a scan.")
     print("Show overall health (lenient + strict), ALL dimension scores,")
-    print("AND all review dimension scores in a markdown table.")
+    print("AND all subjective dimension scores in a markdown table.")
     print("The goal is to maximize strict scores. Never skip the scores.\n")
 
     print(f"Overall health: {obj_score:.1f}/100")
@@ -363,15 +363,15 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
         print(f"Strict health:  {obj_strict:.1f}/100")
     print()
 
-    # Build dimension table — separate mechanical from review
+    # Build dimension table — separate mechanical from subjective
     from ..scoring import DIMENSIONS
     static_names = {d.name for d in DIMENSIONS}
     mechanical = [(name, data) for name, data in dim_scores.items()
                   if name in static_names and data.get("checks", 0) > 0]
-    review = [(name, data) for name, data in dim_scores.items()
-              if name not in static_names and data.get("checks", 0) > 0]
+    subjective = [(name, data) for name, data in dim_scores.items()
+                  if name not in static_names and data.get("checks", 0) > 0]
 
-    if mechanical or review:
+    if mechanical or subjective:
         from ..registry import dimension_action_type
         print("| Dimension | Health | Strict | Issues | Tier | Action |")
         print("|-----------|--------|--------|--------|------|--------|")
@@ -382,9 +382,9 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
             tier = data.get("tier", "")
             action = dimension_action_type(name)
             print(f"| {name} | {score:.1f}% | {strict:.1f}% | {issues} | T{tier} | {action} |")
-        if review:
-            print("| **Review Dimensions** | | | | | |")
-            for name, data in sorted(review, key=lambda x: x[0]):
+        if subjective:
+            print("| **Subjective Dimensions** | | | | | |")
+            for name, data in sorted(subjective, key=lambda x: x[0]):
                 score = data.get("score", 100)
                 strict = data.get("strict", score)
                 issues = data.get("issues", 0)
@@ -415,8 +415,8 @@ def _print_llm_summary(state: dict, badge_path: Path | None,
     print("- **Batch wontfix**: Multiple intentional patterns →")
     print('  `desloppify resolve wontfix "<detector>::*::<category>" --note "<why>"`\n')
     print("### Understanding Dimensions")
-    print("- **Mechanical** (Import hygiene, File health, etc.): Fix code → rescan")
-    print("- **Review** (Naming Quality, Logic Clarity, etc.): Address review findings → re-review")
+    print("- **Mechanical** (File health, Code quality, etc.): Fix code → rescan")
+    print("- **Subjective** (Naming Quality, Logic Clarity, etc.): Address review findings → re-review")
     print("- **Health vs Strict**: Health ignores wontfix; Strict penalizes it. Focus on Strict.\n")
 
     # Current narrative status
@@ -467,7 +467,7 @@ def _show_detector_progress(state: dict):
     order_map = {d: i for i, d in enumerate(DET_ORDER)}
     sorted_dets = sorted(by_det.items(), key=lambda x: order_map.get(x[0], 99))
 
-    print(c("  " + "─" * 50, "dim"))
+    print(colorize("  " + "─" * 50, "dim"))
     bar_len = 15
     for det, ds in sorted_dets:
         total = ds["total"]
@@ -477,19 +477,19 @@ def _show_detector_progress(state: dict):
 
         filled = round(pct / 100 * bar_len)
         if pct == 100:
-            bar = c("█" * bar_len, "green")
+            bar = colorize("█" * bar_len, "green")
         elif open_count <= 2:
-            bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+            bar = colorize("█" * filled, "green") + colorize("░" * (bar_len - filled), "dim")
         else:
-            bar = c("█" * filled, "yellow") + c("░" * (bar_len - filled), "dim")
+            bar = colorize("█" * filled, "yellow") + colorize("░" * (bar_len - filled), "dim")
 
         det_label = det.replace("_", " ").ljust(18)
         if open_count > 0:
-            open_str = c(f"{open_count:3d} open", "yellow")
+            open_str = colorize(f"{open_count:3d} open", "yellow")
         else:
-            open_str = c("  ✓", "green")
+            open_str = colorize("  ✓", "green")
 
-        print(f"  {det_label} {bar} {pct:3d}%  {open_str}  {c(f'/ {total}', 'dim')}")
+        print(f"  {det_label} {bar} {pct:3d}%  {open_str}  {colorize(f'/ {total}', 'dim')}")
 
     print()
 
@@ -515,15 +515,15 @@ def _show_dimension_deltas(prev: dict, current: dict):
     if not moved:
         return
 
-    print(c("  Moved:", "dim"))
+    print(colorize("  Moved:", "dim"))
     for name, old, new, delta, old_s, new_s, s_delta in sorted(moved, key=lambda x: x[3]):
         sign = "+" if delta > 0 else ""
         color = "green" if delta > 0 else "red"
         strict_str = ""
         if abs(s_delta) >= 0.1:
             s_sign = "+" if s_delta > 0 else ""
-            strict_str = c(f"  strict: {old_s:.1f}→{new_s:.1f}% ({s_sign}{s_delta:.1f}%)", "dim")
-        print(c(f"    {name:<22} {old:.1f}% → {new:.1f}%  ({sign}{delta:.1f}%)", color) + strict_str)
+            strict_str = colorize(f"  strict: {old_s:.1f}→{new_s:.1f}% ({s_sign}{s_delta:.1f}%)", "dim")
+        print(colorize(f"    {name:<22} {old:.1f}% → {new:.1f}%  ({sign}{delta:.1f}%)", color) + strict_str)
     print()
 
 
@@ -533,16 +533,11 @@ def _show_low_dimension_hints(dim_scores: dict):
     static_names = {d.name for d in DIMENSIONS}
 
     _MECHANICAL_HINTS = {
-        "Import hygiene": "run `desloppify fix unused` to auto-fix",
         "File health": "run `desloppify show structural` — split large files",
-        "Coupling": "run `desloppify show single_use` — inline or merge",
-        "Organization": "run `desloppify show facade` — consolidate re-exports",
         "Code quality": "run `desloppify show smells` — fix code smells",
         "Duplication": "run `desloppify show dupes` — deduplicate functions",
-        "Dependency health": "run `desloppify show naming` — fix naming",
         "Test health": "add tests for uncovered files: `desloppify show test_coverage`",
         "Security": "run `desloppify show security` — fix security issues",
-        "Audit coverage": "run `desloppify review --prepare` to start file reviews",
     }
 
     low = []
@@ -559,9 +554,9 @@ def _show_low_dimension_hints(dim_scores: dict):
         return
 
     low.sort(key=lambda x: x[1])
-    print(c("  Needs attention:", "yellow"))
+    print(colorize("  Needs attention:", "yellow"))
     for name, score, hint in low:
-        print(c(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
+        print(colorize(f"    {name} ({score:.0f}%) — {hint}", "yellow"))
     print()
 
 

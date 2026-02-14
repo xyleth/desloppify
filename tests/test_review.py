@@ -379,10 +379,9 @@ class TestPrepareReview:
         assert data["command"] == "review"
         assert data["total_candidates"] == 1
         assert data["dimensions"] == [
-            "naming_quality", "comment_quality", "error_consistency",
-            "abstraction_fitness", "logic_clarity", "contract_coherence",
-            "type_safety", "cross_module_architecture",
-            "ai_generated_debt", "authorization_coherence",
+            "naming_quality", "error_consistency",
+            "abstraction_fitness", "logic_clarity",
+            "ai_generated_debt",
         ]
         assert "system_prompt" in data
         assert len(data["files"]) == 1
@@ -589,7 +588,7 @@ class TestScoringIntegration:
         potentials = {"review": 2}
         dim_scores = compute_dimension_scores(
             empty_state["findings"], potentials,
-            review_assessments=assessments)
+            subjective_assessments=assessments)
         assert "Naming Quality" in dim_scores
         assert dim_scores["Naming Quality"]["score"] == 75.0
 
@@ -615,14 +614,13 @@ class TestScoringIntegration:
         from desloppify.scoring import _FILE_BASED_DETECTORS
         assert "review" in _FILE_BASED_DETECTORS
 
-    def test_audit_coverage_dimension_exists(self):
+    def test_test_health_dimension_exists(self):
         from desloppify.scoring import DIMENSIONS
         dim_names = [d.name for d in DIMENSIONS]
-        assert "Audit coverage" in dim_names
-        rc = [d for d in DIMENSIONS if d.name == "Audit coverage"][0]
+        assert "Test health" in dim_names
+        rc = [d for d in DIMENSIONS if d.name == "Test health"][0]
         assert rc.tier == 4
         assert "subjective_review" in rc.detectors
-        assert "review" not in rc.detectors
 
 
 # ── Assessment import tests ────────────────────────────────────────
@@ -647,7 +645,7 @@ class TestAssessmentImport:
         diff = import_review_findings(data, state, "typescript")
         assert diff["new"] == 1
         assert len(state["findings"]) == 1
-        assessments = state["review_assessments"]
+        assessments = state["subjective_assessments"]
         assert "naming_quality" in assessments
         assert assessments["naming_quality"]["score"] == 75
         assert "comment_quality" in assessments
@@ -669,7 +667,7 @@ class TestAssessmentImport:
         diff = import_review_findings(data, state, "typescript")
         assert diff["new"] == 1
         # Legacy format: no assessments stored
-        assert state.get("review_assessments", {}) == {}
+        assert state.get("subjective_assessments", {}) == {}
 
     def test_holistic_assessment_overwrites_per_file(self):
         from desloppify.state import _empty_state
@@ -681,7 +679,7 @@ class TestAssessmentImport:
             "findings": [],
         }
         import_review_findings(per_file_data, state, "typescript")
-        assert state["review_assessments"]["abstraction_fitness"]["score"] == 60
+        assert state["subjective_assessments"]["abstraction_fitness"]["score"] == 60
 
         # Import holistic assessments for the same dimension with a different score
         holistic_data = {
@@ -690,8 +688,8 @@ class TestAssessmentImport:
         }
         import_holistic_findings(holistic_data, state, "typescript")
         # Holistic wins
-        assert state["review_assessments"]["abstraction_fitness"]["score"] == 40
-        assert state["review_assessments"]["abstraction_fitness"]["source"] == "holistic"
+        assert state["subjective_assessments"]["abstraction_fitness"]["score"] == 40
+        assert state["subjective_assessments"]["abstraction_fitness"]["source"] == "holistic"
 
     def test_per_file_does_not_overwrite_holistic(self):
         from desloppify.state import _empty_state
@@ -703,7 +701,7 @@ class TestAssessmentImport:
             "findings": [],
         }
         import_holistic_findings(holistic_data, state, "typescript")
-        assert state["review_assessments"]["abstraction_fitness"]["score"] == 40
+        assert state["subjective_assessments"]["abstraction_fitness"]["score"] == 40
 
         # Import per-file for the same dimension
         per_file_data = {
@@ -712,8 +710,8 @@ class TestAssessmentImport:
         }
         import_review_findings(per_file_data, state, "typescript")
         # Holistic score should be preserved
-        assert state["review_assessments"]["abstraction_fitness"]["score"] == 40
-        assert state["review_assessments"]["abstraction_fitness"]["source"] == "holistic"
+        assert state["subjective_assessments"]["abstraction_fitness"]["score"] == 40
+        assert state["subjective_assessments"]["abstraction_fitness"]["source"] == "holistic"
 
     def test_assessment_score_clamped(self):
         from desloppify.state import _empty_state
@@ -724,7 +722,7 @@ class TestAssessmentImport:
             "findings": [],
         }
         import_review_findings(data, state, "typescript")
-        assert state["review_assessments"]["naming_quality"]["score"] == 100
+        assert state["subjective_assessments"]["naming_quality"]["score"] == 100
 
     def test_assessment_negative_clamped(self):
         from desloppify.state import _empty_state
@@ -735,7 +733,7 @@ class TestAssessmentImport:
             "findings": [],
         }
         import_review_findings(data, state, "typescript")
-        assert state["review_assessments"]["naming_quality"]["score"] == 0
+        assert state["subjective_assessments"]["naming_quality"]["score"] == 0
 
     def test_import_dict_without_assessments(self):
         from desloppify.state import _empty_state
@@ -755,7 +753,7 @@ class TestAssessmentImport:
         diff = import_review_findings(data, state, "typescript")
         assert diff["new"] == 1
         # No assessments key in import data, so nothing stored
-        assert state.get("review_assessments", {}) == {}
+        assert state.get("subjective_assessments", {}) == {}
 
 
 # ── Staleness tests ───────────────────────────────────────────────
@@ -943,7 +941,7 @@ class TestRegistry:
         from desloppify.registry import DETECTORS
         assert "review" in DETECTORS
         meta = DETECTORS["review"]
-        assert meta.dimension == "Audit coverage"
+        assert meta.dimension == "Test health"
         assert meta.action_type == "refactor"
 
     def test_review_in_display_order(self):
@@ -1070,9 +1068,8 @@ class TestNewDimensions:
     def test_new_dimensions_in_default(self):
         from desloppify.review import DEFAULT_DIMENSIONS
         assert "logic_clarity" in DEFAULT_DIMENSIONS
-        assert "contract_coherence" in DEFAULT_DIMENSIONS
-        assert "type_safety" in DEFAULT_DIMENSIONS
-        assert "cross_module_architecture" in DEFAULT_DIMENSIONS
+        assert "abstraction_fitness" in DEFAULT_DIMENSIONS
+        assert "ai_generated_debt" in DEFAULT_DIMENSIONS
 
     def test_import_accepts_new_dimensions(self, empty_state):
         from desloppify.review import import_review_findings
@@ -1119,7 +1116,7 @@ class TestNewDimensions:
     def test_new_phase2_dimensions_in_default(self):
         from desloppify.review import DEFAULT_DIMENSIONS
         assert "ai_generated_debt" in DEFAULT_DIMENSIONS
-        assert "authorization_coherence" in DEFAULT_DIMENSIONS
+        assert "error_consistency" in DEFAULT_DIMENSIONS
 
     def test_import_accepts_new_phase2_dimensions(self, empty_state):
         from desloppify.review import import_review_findings

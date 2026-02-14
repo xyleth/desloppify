@@ -3,7 +3,7 @@
 import json
 from collections import defaultdict
 
-from ..utils import c
+from ..utils import colorize
 from ._helpers import _state_path, _write_query
 
 
@@ -62,13 +62,13 @@ def cmd_show(args):
     state = load_state(sp)
 
     if not state.get("last_scan"):
-        print(c("No scans yet. Run: desloppify scan", "yellow"))
+        print(colorize("No scans yet. Run: desloppify scan", "yellow"))
         return
 
     from ..utils import check_tool_staleness
     stale_warning = check_tool_staleness(state)
     if stale_warning:
-        print(c(f"  {stale_warning}", "yellow"))
+        print(colorize(f"  {stale_warning}", "yellow"))
 
     chronic = getattr(args, "chronic", False)
     show_code = getattr(args, "code", False)
@@ -83,7 +83,7 @@ def cmd_show(args):
         pattern = pattern or "<chronic>"
     else:
         if not pattern:
-            print(c("Pattern required (or use --chronic). Try: desloppify show --help", "yellow"))
+            print(colorize("Pattern required (or use --chronic). Try: desloppify show --help", "yellow"))
             return
         status_filter = getattr(args, "status", "open")
         matches = match_findings(state, pattern, status_filter)
@@ -93,7 +93,7 @@ def cmd_show(args):
         matches = [f for f in matches if f["id"] in scoped_ids]
 
     if not matches:
-        print(c(f"No {status_filter} findings matching: {pattern}", "yellow"))
+        print(colorize(f"No {status_filter} findings matching: {pattern}", "yellow"))
         _write_query({"command": "show", "query": pattern, "status_filter": status_filter,
                       "total": 0, "findings": []})
         return
@@ -113,9 +113,9 @@ def cmd_show(args):
         try:
             from ..utils import safe_write_text
             safe_write_text(output_file, json.dumps(payload, indent=2) + "\n")
-            print(c(f"Wrote {len(matches)} findings to {output_file}", "green"))
+            print(colorize(f"Wrote {len(matches)} findings to {output_file}", "green"))
         except OSError as e:
-            print(c(f"Could not write to {output_file}: {e}", "red"))
+            print(colorize(f"Could not write to {output_file}: {e}", "red"))
         return
 
     by_file: dict[str, list] = defaultdict(list)
@@ -126,7 +126,7 @@ def cmd_show(args):
     sorted_files = sorted(by_file.items(), key=lambda x: -len(x[1]))
     top = getattr(args, "top", 20) or 20
 
-    print(c(f"\n  {len(matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
+    print(colorize(f"\n  {len(matches)} {status_filter} findings matching '{pattern}'\n", "bold"))
 
     shown_files = sorted_files[:top]
     remaining_files = sorted_files[top:]
@@ -135,7 +135,7 @@ def cmd_show(args):
     for filepath, findings in shown_files:
         findings.sort(key=lambda f: (f["tier"], CONFIDENCE_ORDER.get(f["confidence"], 9)))
         display_path = "Codebase-wide" if filepath == "." else filepath
-        print(c(f"  {display_path}", "cyan") + c(f"  ({len(findings)} findings)", "dim"))
+        print(colorize(f"  {display_path}", "cyan") + colorize(f"  ({len(findings)} findings)", "dim"))
 
         for f in findings:
             status_icon = {"open": "○", "fixed": "✓", "wontfix": "—", "false_positive": "✗",
@@ -143,12 +143,12 @@ def cmd_show(args):
             zone_tag = ""
             zone = f.get("zone", "production")
             if zone != "production":
-                zone_tag = c(f" [{zone}]", "dim")
+                zone_tag = colorize(f" [{zone}]", "dim")
             print(f"    {status_icon} T{f['tier']} [{f['confidence']}] {f['summary']}{zone_tag}")
 
             detail_parts = _format_detail(f.get("detail", {}))
             if detail_parts:
-                print(c(f"      {' · '.join(detail_parts)}", "dim"))
+                print(colorize(f"      {' · '.join(detail_parts)}", "dim"))
             if show_code:
                 detail = f.get("detail", {})
                 target_line = detail.get("line") or (detail.get("lines", [None]) or [None])[0]
@@ -158,14 +158,14 @@ def cmd_show(args):
                     if snippet:
                         print(snippet)
             if f.get("reopen_count", 0) >= 2:
-                print(c(f"      ⟳ reopened {f['reopen_count']} times — fix properly or wontfix", "red"))
+                print(colorize(f"      ⟳ reopened {f['reopen_count']} times — fix properly or wontfix", "red"))
             if f.get("note"):
-                print(c(f"      note: {f['note']}", "dim"))
-            print(c(f"      {f['id']}", "dim"))
+                print(colorize(f"      note: {f['note']}", "dim"))
+            print(colorize(f"      {f['id']}", "dim"))
         print()
 
     if remaining_findings:
-        print(c(f"  ... and {len(remaining_files)} more files ({remaining_findings} findings). Use --top {top + 20} to see more.\n", "dim"))
+        print(colorize(f"  ... and {len(remaining_files)} more files ({remaining_findings} findings). Use --top {top + 20} to see more.\n", "dim"))
 
     by_detector: dict[str, int] = defaultdict(int)
     by_tier: dict[int, int] = defaultdict(int)
@@ -173,9 +173,9 @@ def cmd_show(args):
         by_detector[f["detector"]] += 1
         by_tier[f["tier"]] += 1
 
-    print(c("  Summary:", "bold"))
-    print(c(f"    By tier:     {', '.join(f'T{t}:{n}' for t, n in sorted(by_tier.items()))}", "dim"))
-    print(c(f"    By detector: {', '.join(f'{d}:{n}' for d, n in sorted(by_detector.items(), key=lambda x: -x[1]))}", "dim"))
+    print(colorize("  Summary:", "bold"))
+    print(colorize(f"    By tier:     {', '.join(f'T{t}:{n}' for t, n in sorted(by_tier.items()))}", "dim"))
+    print(colorize(f"    By detector: {', '.join(f'{d}:{n}' for d, n in sorted(by_detector.items(), key=lambda x: -x[1]))}", "dim"))
     print()
 
 

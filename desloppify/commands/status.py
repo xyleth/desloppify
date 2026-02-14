@@ -3,7 +3,7 @@
 import json
 from collections import defaultdict
 
-from ..utils import LOC_COMPACT_THRESHOLD, c, get_area, print_table
+from ..utils import LOC_COMPACT_THRESHOLD, colorize, get_area, print_table
 from ._helpers import _state_path, _write_query
 
 
@@ -29,13 +29,13 @@ def cmd_status(args):
         return
 
     if not state.get("last_scan"):
-        print(c("No scans yet. Run: desloppify scan", "yellow"))
+        print(colorize("No scans yet. Run: desloppify scan", "yellow"))
         return
 
     from ..utils import check_tool_staleness
     stale_warning = check_tool_staleness(state)
     if stale_warning:
-        print(c(f"  {stale_warning}", "yellow"))
+        print(colorize(f"  {stale_warning}", "yellow"))
 
     score = state.get("score", 0)
     strict_score = state.get("strict_score", 0)
@@ -46,12 +46,12 @@ def cmd_status(args):
 
     # Header: prefer objective score when available
     if obj_score is not None:
-        print(c(f"\n  Desloppify Health: {obj_score:.1f}/100", "bold") +
-              c(f"  (strict: {obj_strict:.1f})", "dim"))
+        print(colorize(f"\n  Desloppify Health: {obj_score:.1f}/100", "bold") +
+              colorize(f"  (strict: {obj_strict:.1f})", "dim"))
     else:
-        print(c(f"\n  Desloppify Score: {score}/100", "bold") +
-              c(f"  (strict: {strict_score}/100)", "dim"))
-        print(c("  ⚠ Dimension-based scoring unavailable (potentials missing). "
+        print(colorize(f"\n  Desloppify Score: {score}/100", "bold") +
+              colorize(f"  (strict: {strict_score}/100)", "dim"))
+        print(colorize("  ⚠ Dimension-based scoring unavailable (potentials missing). "
                 "Run a full scan to fix: desloppify scan --path <source-root>", "yellow"))
 
     # Codebase metrics
@@ -61,18 +61,18 @@ def cmd_status(args):
     total_dirs = sum(m.get("total_directories", 0) for m in metrics.values())
     if total_files:
         loc_str = f"{total_loc:,}" if total_loc < LOC_COMPACT_THRESHOLD else f"{total_loc // 1000}K"
-        print(c(f"  {total_files} files · {loc_str} LOC · {total_dirs} dirs · "
+        print(colorize(f"  {total_files} files · {loc_str} LOC · {total_dirs} dirs · "
                 f"Last scan: {state.get('last_scan', 'never')}", "dim"))
     else:
-        print(c(f"  Scans: {state.get('scan_count', 0)} | Last: {state.get('last_scan', 'never')}", "dim"))
+        print(colorize(f"  Scans: {state.get('scan_count', 0)} | Last: {state.get('last_scan', 'never')}", "dim"))
 
     # Completeness indicator
     completeness = state.get("scan_completeness", {})
     incomplete = [lang for lang, s in completeness.items() if s != "full"]
     if incomplete:
-        print(c(f"  * Incomplete scan ({', '.join(incomplete)} — slow phases skipped)", "yellow"))
+        print(colorize(f"  * Incomplete scan ({', '.join(incomplete)} — slow phases skipped)", "yellow"))
 
-    print(c("  " + "─" * 60, "dim"))
+    print(colorize("  " + "─" * 60, "dim"))
 
     # Dimension table (when available)
     if dim_scores:
@@ -90,7 +90,7 @@ def cmd_status(args):
             strict_pct = round((t_fixed + t_fp) / t_total * 100) if t_total else 100
             bar_len = 20
             filled = round(strict_pct / 100 * bar_len)
-            bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+            bar = colorize("█" * filled, "green") + colorize("░" * (bar_len - filled), "dim")
             rows.append([f"Tier {tier_num}", bar, f"{strict_pct}%",
                          str(t_open), str(t_fixed), str(t_wontfix)])
 
@@ -111,19 +111,19 @@ def cmd_status(args):
     lang_name = lang.name if lang else None
     narrative = compute_narrative(state, lang=lang_name, command="status")
     if narrative.get("headline"):
-        print(c(f"  → {narrative['headline']}", "cyan"))
+        print(colorize(f"  → {narrative['headline']}", "cyan"))
         print()
 
     ignores = args._config.get("ignore", [])
     if ignores:
-        print(c(f"\n  Ignore list ({len(ignores)}):", "dim"))
+        print(colorize(f"\n  Ignore list ({len(ignores)}):", "dim"))
         for p in ignores[:10]:
-            print(c(f"    {p}", "dim"))
+            print(colorize(f"    {p}", "dim"))
 
     review_age = args._config.get("review_max_age_days", 30)
     if review_age != 30:
         label = "never" if review_age == 0 else f"{review_age} days"
-        print(c(f"  Review staleness: {label}", "dim"))
+        print(colorize(f"  Review staleness: {label}", "dim"))
     print()
 
     _write_query({"command": "status", "score": score, "strict_score": strict_score,
@@ -145,10 +145,10 @@ def _show_dimension_table(dim_scores: dict):
     print()
     bar_len = 20
     # Header
-    print(c(f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len+2}} {'Tier'}  {'Action'}", "dim"))
-    print(c("  " + "─" * 86, "dim"))
+    print(colorize(f"  {'Dimension':<22} {'Checks':>7}  {'Health':>6}  {'Strict':>6}  {'Bar':<{bar_len+2}} {'Tier'}  {'Action'}", "dim"))
+    print(colorize("  " + "─" * 86, "dim"))
 
-    # Find lowest score for focus arrow (includes assessment dimensions)
+    # Find lowest score for focus arrow (includes subjective dimensions)
     lowest_name = None
     lowest_score = 101
     for name, ds in dim_scores.items():
@@ -166,24 +166,24 @@ def _show_dimension_table(dim_scores: dict):
 
         filled = round(score_val / 100 * bar_len)
         if score_val >= 98:
-            bar = c("█" * filled + "░" * (bar_len - filled), "green")
+            bar = colorize("█" * filled + "░" * (bar_len - filled), "green")
         elif score_val >= 93:
-            bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+            bar = colorize("█" * filled, "green") + colorize("░" * (bar_len - filled), "dim")
         else:
-            bar = c("█" * filled, "yellow") + c("░" * (bar_len - filled), "dim")
+            bar = colorize("█" * filled, "yellow") + colorize("░" * (bar_len - filled), "dim")
 
-        focus = c(" ←", "yellow") if dim.name == lowest_name else "  "
+        focus = colorize(" ←", "yellow") if dim.name == lowest_name else "  "
         checks_str = f"{checks:>7,}"
         action = dimension_action_type(dim.name)
         print(f"  {dim.name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{dim.tier}  {action}{focus}")
 
 
-    # Assessment dimensions (not in DIMENSIONS list)
+    # Subjective dimensions (not in DIMENSIONS list)
     static_names = {d.name for d in DIMENSIONS}
     assessment_dims = [(name, ds) for name, ds in sorted(dim_scores.items())
                        if name not in static_names]
     if assessment_dims:
-        print(c("  ── Review Dimensions ─────────────────────────────────────────────────", "dim"))
+        print(colorize("  ── Subjective Dimensions ─────────────────────────────────────────────", "dim"))
         for name, ds in assessment_dims:
             score_val = ds["score"]
             strict_val = ds.get("strict", score_val)
@@ -191,17 +191,17 @@ def _show_dimension_table(dim_scores: dict):
 
             filled = round(score_val / 100 * bar_len)
             if score_val >= 98:
-                bar = c("█" * filled + "░" * (bar_len - filled), "green")
+                bar = colorize("█" * filled + "░" * (bar_len - filled), "green")
             elif score_val >= 93:
-                bar = c("█" * filled, "green") + c("░" * (bar_len - filled), "dim")
+                bar = colorize("█" * filled, "green") + colorize("░" * (bar_len - filled), "dim")
             else:
-                bar = c("█" * filled, "yellow") + c("░" * (bar_len - filled), "dim")
+                bar = colorize("█" * filled, "yellow") + colorize("░" * (bar_len - filled), "dim")
 
-            focus = c(" ←", "yellow") if name == lowest_name else "  "
+            focus = colorize(" ←", "yellow") if name == lowest_name else "  "
             checks_str = f"{'—':>7}"
             print(f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}")
-    print(c("  Health = open penalized | Strict = open + wontfix penalized", "dim"))
-    print(c("  Action: fix=auto-fixer | move=reorganize | refactor=manual rewrite | manual=review & fix", "dim"))
+    print(colorize("  Health = open penalized | Strict = open + wontfix penalized", "dim"))
+    print(colorize("  Action: fix=auto-fixer | move=reorganize | refactor=manual rewrite | manual=review & fix", "dim"))
     print()
 
 
@@ -218,13 +218,13 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
 
     if lowest_name and lowest_score < 100:
         ds = dim_scores[lowest_name]
-        # Assessment dimensions have "review_assessment" as their only detector
-        is_assessment = "review_assessment" in ds.get("detectors", {})
-        if is_assessment:
+        # Subjective dimensions have "subjective_assessment" as their only detector
+        is_subjective = "subjective_assessment" in ds.get("detectors", {})
+        if is_subjective:
             suffix = ""
             if lowest_issues:
                 suffix = f", {lowest_issues} review finding{'s' if lowest_issues != 1 else ''}"
-            print(c(f"  Focus: {lowest_name} ({lowest_score:.1f}%) — "
+            print(colorize(f"  Focus: {lowest_name} ({lowest_score:.1f}%) — "
                     f"re-review to improve{suffix}", "cyan"))
             print()
             return
@@ -247,7 +247,7 @@ def _show_focus_suggestion(dim_scores: dict, state: dict):
                     break
 
             impact_str = f" for +{impact:.1f} pts" if impact > 0 else ""
-            print(c(f"  Focus: {lowest_name} ({lowest_score:.1f}%) — "
+            print(colorize(f"  Focus: {lowest_name} ({lowest_score:.1f}%) — "
                     f"fix {lowest_issues} items{impact_str}", "cyan"))
             print()
 
@@ -273,8 +273,8 @@ def _show_structural_areas(state: dict):
     sorted_areas = sorted(areas.items(),
                           key=lambda x: -sum(f["tier"] for f in x[1]))
 
-    print(c("\n  ── Structural Debt by Area ──", "bold"))
-    print(c("  Create a task doc for each area → farm to sub-agents for decomposition", "dim"))
+    print(colorize("\n  ── Structural Debt by Area ──", "bold"))
+    print(colorize("  Create a task doc for each area → farm to sub-agents for decomposition", "dim"))
     print()
 
     rows = []
@@ -292,12 +292,12 @@ def _show_structural_areas(state: dict):
 
     remaining = len(sorted_areas) - 15
     if remaining > 0:
-        print(c(f"\n  ... and {remaining} more areas", "dim"))
+        print(colorize(f"\n  ... and {remaining} more areas", "dim"))
 
-    print(c("\n  Workflow:", "dim"))
-    print(c("    1. desloppify show <area> --status wontfix --top 50", "dim"))
-    print(c("    2. Create tasks/<date>-<area-name>.md with decomposition plan", "dim"))
-    print(c("    3. Farm each task doc to a sub-agent for implementation", "dim"))
+    print(colorize("\n  Workflow:", "dim"))
+    print(colorize("    1. desloppify show <area> --status wontfix --top 50", "dim"))
+    print(colorize("    2. Create tasks/<date>-<area-name>.md with decomposition plan", "dim"))
+    print(colorize("    3. Farm each task doc to a sub-agent for implementation", "dim"))
     print()
 
 
@@ -313,9 +313,9 @@ def _show_review_summary(state: dict):
     parts = [f"{len(review_open)} finding{'s' if len(review_open) != 1 else ''} open"]
     if uninvestigated:
         parts.append(f"{uninvestigated} uninvestigated")
-    print(c(f"  Review: {', '.join(parts)} — `desloppify issues`", "cyan"))
+    print(colorize(f"  Review: {', '.join(parts)} — `desloppify issues`", "cyan"))
     # Explain relationship between audit coverage dimension and review findings
     dim_scores = state.get("dimension_scores", {})
-    if "Audit coverage" in dim_scores:
-        print(c("  Audit coverage tracks % of files reviewed; review findings track issues found.", "dim"))
+    if "Test health" in dim_scores:
+        print(colorize("  Test health tracks coverage + review; review findings track issues found.", "dim"))
     print()

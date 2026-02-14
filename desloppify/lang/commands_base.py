@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from ..utils import c, display_entries, print_table, rel
+from ..utils import colorize, display_entries, print_table, rel
 
 
 def make_cmd_large(file_finder: Callable, default_threshold: int):
@@ -114,17 +114,17 @@ def make_cmd_facade(build_dep_graph_fn: Callable, lang: str):
             ]}, indent=2))
             return
         if not entries:
-            print(c("\nNo re-export facades found.", "green"))
+            print(colorize("\nNo re-export facades found.", "green"))
             return
         file_facades = [e for e in entries if e["kind"] == "file"]
         dir_facades = [e for e in entries if e["kind"] == "directory"]
         if file_facades:
-            print(c(f"\nRe-export facade files: {len(file_facades)}\n", "bold"))
+            print(colorize(f"\nRe-export facade files: {len(file_facades)}\n", "bold"))
             rows = [[rel(e["file"]), str(e["loc"]), str(e["importers"]),
                      ", ".join(e["imports_from"][:3])] for e in file_facades]
             print_table(["File", "LOC", "Importers", "Re-exports From"], rows, [50, 5, 9, 40])
         if dir_facades:
-            print(c(f"\nFacade directories: {len(dir_facades)}\n", "bold"))
+            print(colorize(f"\nFacade directories: {len(dir_facades)}\n", "bold"))
             rows = [[rel(e["file"]), str(e.get("file_count", "?")), str(e["importers"])]
                     for e in dir_facades]
             print_table(["Directory", "Files", "Importers"], rows, [50, 6, 9])
@@ -140,19 +140,19 @@ def make_cmd_smells(detect_smells_fn: Callable):
             print(json.dumps({"entries": entries}, indent=2))
             return
         if not entries:
-            print(c("No code smells detected.", "green"))
+            print(colorize("No code smells detected.", "green"))
             return
         total = sum(e["count"] for e in entries)
-        print(c(f"\nCode smells: {total} instances across {len(entries)} patterns\n", "bold"))
+        print(colorize(f"\nCode smells: {total} instances across {len(entries)} patterns\n", "bold"))
         rows = []
         for e in entries[:getattr(args, "top", 20)]:
             sev_color = {"high": "red", "medium": "yellow", "low": "dim"}.get(e["severity"], "dim")
-            rows.append([c(e["severity"].upper(), sev_color), e["label"],
+            rows.append([colorize(e["severity"].upper(), sev_color), e["label"],
                          str(e["count"]), str(e["files"])])
         print_table(["Sev", "Pattern", "Count", "Files"], rows, [8, 40, 6, 6])
         high = [e for e in entries if e["severity"] == "high"]
         for e in high:
-            print(c(f"\n  {e['label']} ({e['count']} instances):", "red"))
+            print(colorize(f"\n  {e['label']} ({e['count']} instances):", "red"))
             for m in e["matches"][:10]:
                 print(f"    {rel(m['file'])}:{m['line']}  {m['content'][:60]}")
     return cmd_smells

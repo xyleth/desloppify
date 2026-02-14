@@ -2,8 +2,14 @@
 
 import json
 
-from ..utils import c
+from ..utils import colorize
 from ._helpers import _state_path, _write_query
+
+
+def _serialize_item(f: dict) -> dict:
+    """Build a serializable output dict from a finding."""
+    return {"id": f["id"], "tier": f["tier"], "confidence": f["confidence"],
+            "file": f["file"], "summary": f["summary"], "detail": f.get("detail", {})}
 
 
 def cmd_next(args):
@@ -17,14 +23,14 @@ def cmd_next(args):
     from ..utils import check_tool_staleness
     stale_warning = check_tool_staleness(state)
     if stale_warning:
-        print(c(f"  {stale_warning}", "yellow"))
+        print(colorize(f"  {stale_warning}", "yellow"))
 
     tier = getattr(args, "tier", None)
     count = getattr(args, "count", 1) or 1
 
     items = get_next_items(state, tier, count, scan_path=state.get("scan_path"))
     if not items:
-        print(c("Nothing to do! Score: 100/100", "green"))
+        print(colorize("Nothing to do! Score: 100/100", "green"))
         _write_query({"command": "next", "items": [], "score": state.get("score", 0)})
         return
 
@@ -37,23 +43,19 @@ def cmd_next(args):
     _write_query({
         "command": "next",
         "score": state.get("score", 0),
-        "items": [{"id": f["id"], "tier": f["tier"], "confidence": f["confidence"],
-                   "file": f["file"], "summary": f["summary"], "detail": f.get("detail", {})}
-                  for f in items],
+        "items": [_serialize_item(f) for f in items],
         "narrative": narrative,
     })
 
     output_file = getattr(args, "output", None)
     if output_file:
-        output = [{"id": f["id"], "tier": f["tier"], "confidence": f["confidence"],
-                   "file": f["file"], "summary": f["summary"], "detail": f.get("detail", {})}
-                  for f in items]
+        output = [_serialize_item(f) for f in items]
         try:
             from ..utils import safe_write_text
             safe_write_text(output_file, json.dumps(output, indent=2) + "\n")
-            print(c(f"Wrote {len(items)} items to {output_file}", "green"))
+            print(colorize(f"Wrote {len(items)} items to {output_file}", "green"))
         except OSError as e:
-            print(c(f"Could not write to {output_file}: {e}", "red"))
+            print(colorize(f"Could not write to {output_file}: {e}", "red"))
         return
 
     # Look up dimension info and scoped findings for context
@@ -65,11 +67,11 @@ def cmd_next(args):
         if i > 0:
             print()
         label = f"  [{i+1}/{len(items)}]" if len(items) > 1 else "  Next item"
-        print(c(f"{label} (Tier {item['tier']}, {item['confidence']} confidence):", "bold"))
-        print(c("  " + "─" * 60, "dim"))
-        print(f"  {c(item['summary'], 'yellow')}")
+        print(colorize(f"{label} (Tier {item['tier']}, {item['confidence']} confidence):", "bold"))
+        print(colorize("  " + "─" * 60, "dim"))
+        print(f"  {colorize(item['summary'], 'yellow')}")
         print(f"  File: {item['file']}")
-        print(c(f"  ID:   {item['id']}", "dim"))
+        print(colorize(f"  ID:   {item['id']}", "dim"))
 
         detail = item.get("detail", {})
         if detail.get("lines"):
@@ -85,7 +87,7 @@ def cmd_next(args):
             from ..utils import read_code_snippet
             snippet = read_code_snippet(item["file"], target_line)
             if snippet:
-                print(c("\n  Code:", "dim"))
+                print(colorize("\n  Code:", "dim"))
                 print(snippet)
 
         # Dimension context
@@ -96,7 +98,7 @@ def cmd_next(args):
             if dim and dim.name in dim_scores:
                 ds = dim_scores[dim.name]
                 strict_val = ds.get('strict', ds['score'])
-                print(c(f"\n  Dimension: {dim.name} — {ds['score']:.1f}% "
+                print(colorize(f"\n  Dimension: {dim.name} — {ds['score']:.1f}% "
                         f"(strict: {strict_val:.1f}%) "
                         f"({ds['issues']} of {ds['checks']:,} checks failing)", "dim"))
 
@@ -110,7 +112,7 @@ def cmd_next(args):
                                     if f.get("detector") == det_name and f["status"] == "open")
                 if similar_count > 1:
                     fixer = meta.fixers[0]
-                    print(c(f"\n  Auto-fixable: {similar_count} similar findings. "
+                    print(colorize(f"\n  Auto-fixable: {similar_count} similar findings. "
                             f"Run `desloppify fix {fixer} --dry-run` to fix all at once.", "cyan"))
 
     if len(items) == 1:
@@ -118,12 +120,12 @@ def cmd_next(args):
         # Check if auto-fixable — show fixer command first
         det_name = item.get("detector", "")
         if det_name in DETECTORS and DETECTORS[det_name].action_type == "auto_fix" and DETECTORS[det_name].fixers:
-            print(c("\n  Fix with:", "dim"))
+            print(colorize("\n  Fix with:", "dim"))
             fixer = DETECTORS[det_name].fixers[0]
             print(f"    desloppify fix {fixer} --dry-run")
-            print(c("  Or resolve individually:", "dim"))
+            print(colorize("  Or resolve individually:", "dim"))
         else:
-            print(c("\n  Resolve with:", "dim"))
+            print(colorize("\n  Resolve with:", "dim"))
         print(f"    desloppify resolve fixed \"{item['id']}\" --note \"<what you did>\"")
         print(f"    desloppify resolve wontfix \"{item['id']}\" --note \"<why>\"")
 
@@ -139,7 +141,7 @@ def cmd_next(args):
                                    f.get("detail", {}).get("kind") or
                                    f.get("detail", {}).get("category") or "") == smell_id)
             if batch_count > 1:
-                print(c(f"\n  Batch resolve ({batch_count} similar):", "dim"))
+                print(colorize(f"\n  Batch resolve ({batch_count} similar):", "dim"))
                 print(f'    desloppify resolve wontfix "{pattern}" --note "<why all>"')
 
     # Review findings nudge — remind agent about the parallel work queue
@@ -153,6 +155,6 @@ def cmd_next(args):
         if uninvestigated > 0:
             msg += f" ({uninvestigated} uninvestigated)"
         msg += ". Run `desloppify issues` for the review work queue."
-        print(c(msg, "cyan"))
+        print(colorize(msg, "cyan"))
 
     print()

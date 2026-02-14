@@ -204,7 +204,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 def _apply_persisted_exclusions(args, config: dict):
     """Merge CLI --exclude with persisted config.exclude, set on utils global."""
-    from .utils import set_exclusions, c
+    from .utils import set_exclusions, colorize
 
     cli_exclusions = getattr(args, "exclude", None) or []
     persisted = config.get("exclude", [])
@@ -213,9 +213,9 @@ def _apply_persisted_exclusions(args, config: dict):
         set_exclusions(combined)
         import sys
         if cli_exclusions:
-            print(c(f"  Excluding: {', '.join(combined)}", "dim"), file=sys.stderr)
+            print(colorize(f"  Excluding: {', '.join(combined)}", "dim"), file=sys.stderr)
         else:
-            print(c(f"  Excluding (from config): {', '.join(combined)}", "dim"), file=sys.stderr)
+            print(colorize(f"  Excluding (from config): {', '.join(combined)}", "dim"), file=sys.stderr)
 
 
 def main():
@@ -250,53 +250,33 @@ def main():
     args._preloaded_state = state
     args._state_path = sp
 
-    # Lazy-load command handlers from commands/
-    from .commands.scan import cmd_scan
-    from .commands.status import cmd_status
-    from .commands.show import cmd_show
-    from .commands.next import cmd_next
-    from .commands.resolve import cmd_resolve, cmd_ignore_pattern
-    from .commands.fix_cmd import cmd_fix
-    from .commands.plan_cmd import cmd_plan_output
-    from .commands.detect import cmd_detect
-
-    commands = {
-        "scan": cmd_scan,
-        "status": cmd_status,
-        "show": cmd_show,
-        "next": cmd_next,
-        "resolve": cmd_resolve,
-        "ignore": cmd_ignore_pattern,
-        "fix": cmd_fix,
-        "plan": cmd_plan_output,
-        "detect": cmd_detect,
+    # Lazy-load command handlers — only import the one needed
+    _COMMAND_MAP = {
+        "scan": (".commands.scan", "cmd_scan"),
+        "status": (".commands.status", "cmd_status"),
+        "show": (".commands.show", "cmd_show"),
+        "next": (".commands.next", "cmd_next"),
+        "resolve": (".commands.resolve", "cmd_resolve"),
+        "ignore": (".commands.resolve", "cmd_ignore_pattern"),
+        "fix": (".commands.fix_cmd", "cmd_fix"),
+        "plan": (".commands.plan_cmd", "cmd_plan_output"),
+        "detect": (".commands.detect", "cmd_detect"),
+        "tree": (".visualize", "cmd_tree"),
+        "viz": (".visualize", "cmd_viz"),
+        "move": (".commands.move", "cmd_move"),
+        "zone": (".commands.zone_cmd", "cmd_zone"),
+        "review": (".commands.review_cmd", "cmd_review"),
+        "issues": (".commands.issues_cmd", "cmd_issues"),
+        "config": (".commands.config_cmd", "cmd_config"),
     }
 
-    # Lazy-loaded commands
-    if args.command == "tree":
-        from .visualize import cmd_tree
-        commands["tree"] = cmd_tree
-    elif args.command == "viz":
-        from .visualize import cmd_viz
-        commands["viz"] = cmd_viz
-    elif args.command == "move":
-        from .commands.move import cmd_move
-        commands["move"] = cmd_move
-    elif args.command == "zone":
-        from .commands.zone_cmd import cmd_zone
-        commands["zone"] = cmd_zone
-    elif args.command == "review":
-        from .commands.review_cmd import cmd_review
-        commands["review"] = cmd_review
-    elif args.command == "issues":
-        from .commands.issues_cmd import cmd_issues
-        commands["issues"] = cmd_issues
-    elif args.command == "config":
-        from .commands.config_cmd import cmd_config
-        commands["config"] = cmd_config
+    module_path, func_name = _COMMAND_MAP[args.command]
+    import importlib
+    mod = importlib.import_module(module_path, package="desloppify")
+    handler = getattr(mod, func_name)
 
     try:
-        commands[args.command](args)
+        handler(args)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         sys.exit(1)

@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from ..utils import c, rel, resolve_path
+from ..utils import colorize, rel, resolve_path
 
 
 def _dedup(replacements: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -92,7 +92,7 @@ def _compute_replacements(
             find_py_self_replacements(source_abs, dest_abs, graph),
         )
     else:
-        print(c(f"Move not yet supported for language: {lang_name}", "red"), file=sys.stderr)
+        print(colorize(f"Move not yet supported for language: {lang_name}", "red"), file=sys.stderr)
         sys.exit(1)
 
 
@@ -108,17 +108,17 @@ def _print_plan(
     total_files = len(importer_changes) + (1 if self_changes else 0)
     total_replacements = sum(len(r) for r in importer_changes.values()) + len(self_changes)
 
-    print(c(f"\n  Move: {rel(source_abs)} → {rel(dest_abs)}", "bold"))
-    print(c(f"  {total_replacements} import replacements across {total_files} files\n", "dim"))
+    print(colorize(f"\n  Move: {rel(source_abs)} → {rel(dest_abs)}", "bold"))
+    print(colorize(f"  {total_replacements} import replacements across {total_files} files\n", "dim"))
 
     if self_changes:
-        print(c(f"  Own imports ({len(self_changes)} changes):", "cyan"))
+        print(colorize(f"  Own imports ({len(self_changes)} changes):", "cyan"))
         for old, new in self_changes:
             print(f"    {old}  →  {new}")
         print()
 
     if importer_changes:
-        print(c(f"  Importers ({len(importer_changes)} files):", "cyan"))
+        print(colorize(f"  Importers ({len(importer_changes)} files):", "cyan"))
         for filepath, replacements in sorted(importer_changes.items()):
             print(f"    {rel(filepath)}:")
             for old, new in replacements:
@@ -126,7 +126,7 @@ def _print_plan(
         print()
 
     if not importer_changes and not self_changes:
-        print(c("  No import references found — only the file will be moved.", "dim"))
+        print(colorize("  No import references found — only the file will be moved.", "dim"))
         print()
 
 
@@ -187,20 +187,20 @@ def _apply_changes(
                 _safe_write(filepath, new_contents[filepath])
 
     except Exception as ex:
-        print(c(f"\n  Error during move: {ex}", "red"), file=sys.stderr)
-        print(c("  Rolling back...", "yellow"), file=sys.stderr)
+        print(colorize(f"\n  Error during move: {ex}", "red"), file=sys.stderr)
+        print(colorize("  Rolling back...", "yellow"), file=sys.stderr)
         # Restore any files we already wrote
         for fp, original in written_files.items():
             try:
                 _safe_write(fp, original)
             except OSError:
-                print(c(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
+                print(colorize(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
         # Move the file back if it was moved
         if Path(dest_abs).exists() and not Path(source_abs).exists():
             try:
                 shutil.move(dest_abs, source_abs)
             except OSError:
-                print(c(f"  WARNING: Could not move file back to {rel(source_abs)}", "red"),
+                print(colorize(f"  WARNING: Could not move file back to {rel(source_abs)}", "red"),
                       file=sys.stderr)
         raise
 
@@ -218,13 +218,13 @@ def cmd_move(args):
         return _cmd_move_dir(args, source_abs)
 
     if not source_path.is_file():
-        print(c(f"Source not found: {rel(source_abs)}", "red"), file=sys.stderr)
+        print(colorize(f"Source not found: {rel(source_abs)}", "red"), file=sys.stderr)
         sys.exit(1)
 
     dest_abs = _resolve_dest(source_rel, args.dest)
 
     if Path(dest_abs).exists():
-        print(c(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
+        print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
         sys.exit(1)
 
     dry_run = getattr(args, "dry_run", False)
@@ -232,7 +232,7 @@ def cmd_move(args):
     # Detect language from file extension, fall back to --lang
     lang_name = _resolve_lang_for_move(source_abs, args)
     if not lang_name:
-        print(c("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py extension.", "red"),
+        print(colorize("Cannot detect language. Use --lang or ensure file has .ts/.tsx/.py extension.", "red"),
               file=sys.stderr)
         sys.exit(1)
 
@@ -254,15 +254,15 @@ def cmd_move(args):
     _print_plan(source_abs, dest_abs, importer_changes, self_changes)
 
     if dry_run:
-        print(c("  Dry run — no files modified.", "yellow"))
+        print(colorize("  Dry run — no files modified.", "yellow"))
         return
 
     # Execute
     _apply_changes(source_abs, dest_abs, importer_changes, self_changes)
 
-    print(c("  Done.", "green"))
+    print(colorize("  Done.", "green"))
     if lang_name == "typescript":
-        print(c("  Run `npx tsc --noEmit` to verify.", "dim"))
+        print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
     print()
 
 
@@ -273,7 +273,7 @@ def _cmd_move_dir(args, source_abs: str):
     dry_run = getattr(args, "dry_run", False)
 
     if Path(dest_abs).exists():
-        print(c(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
+        print(colorize(f"Destination already exists: {rel(dest_abs)}", "red"), file=sys.stderr)
         sys.exit(1)
 
     # Detect language from directory contents or --lang
@@ -284,7 +284,7 @@ def _cmd_move_dir(args, source_abs: str):
         if lang:
             lang_name = lang.name
     if not lang_name:
-        print(c("Cannot detect language from directory contents. Use --lang.", "red"),
+        print(colorize("Cannot detect language from directory contents. Use --lang.", "red"),
               file=sys.stderr)
         sys.exit(1)
 
@@ -300,7 +300,7 @@ def _cmd_move_dir(args, source_abs: str):
     source_files = sorted(str(f.resolve()) for f in source_files if f.is_file())
 
     if not source_files:
-        print(c(f"No {lang_name} files found in {rel(source_abs)}", "yellow"), file=sys.stderr)
+        print(colorize(f"No {lang_name} files found in {rel(source_abs)}", "yellow"), file=sys.stderr)
         sys.exit(1)
 
     # Build the dep graph once for all files
@@ -376,12 +376,12 @@ def _cmd_move_dir(args, source_abs: str):
                           sum(len(r) for r in intra_pkg_changes.values()) +
                           sum(len(r) for r in all_self_changes.values()))
 
-    print(c(f"\n  Move directory: {rel(source_abs)}/ → {rel(dest_abs)}/", "bold"))
-    print(c(f"  {len(file_moves)} files in package", "dim"))
-    print(c(f"  {total_replacements} import replacements across {total_changes} files\n", "dim"))
+    print(colorize(f"\n  Move directory: {rel(source_abs)}/ → {rel(dest_abs)}/", "bold"))
+    print(colorize(f"  {len(file_moves)} files in package", "dim"))
+    print(colorize(f"  {total_replacements} import replacements across {total_changes} files\n", "dim"))
 
     if all_self_changes:
-        print(c(f"  Own imports ({sum(len(v) for v in all_self_changes.values())} changes across "
+        print(colorize(f"  Own imports ({sum(len(v) for v in all_self_changes.values())} changes across "
                 f"{len(all_self_changes)} files):", "cyan"))
         for src_file, changes in sorted(all_self_changes.items()):
             print(f"    {rel(src_file)}:")
@@ -390,7 +390,7 @@ def _cmd_move_dir(args, source_abs: str):
         print()
 
     if intra_pkg_changes:
-        print(c(f"  Intra-package imports ({sum(len(v) for v in intra_pkg_changes.values())} changes "
+        print(colorize(f"  Intra-package imports ({sum(len(v) for v in intra_pkg_changes.values())} changes "
                 f"across {len(intra_pkg_changes)} files):", "cyan"))
         for filepath, replacements in sorted(intra_pkg_changes.items()):
             print(f"    {rel(filepath)}:")
@@ -399,7 +399,7 @@ def _cmd_move_dir(args, source_abs: str):
         print()
 
     if external_changes:
-        print(c(f"  External importers ({len(external_changes)} files):", "cyan"))
+        print(colorize(f"  External importers ({len(external_changes)} files):", "cyan"))
         for filepath, replacements in sorted(external_changes.items()):
             print(f"    {rel(filepath)}:")
             for old, new in replacements:
@@ -407,11 +407,11 @@ def _cmd_move_dir(args, source_abs: str):
         print()
 
     if not external_changes and not intra_pkg_changes and not all_self_changes:
-        print(c("  No import references found — only the directory will be moved.", "dim"))
+        print(colorize("  No import references found — only the directory will be moved.", "dim"))
         print()
 
     if dry_run:
-        print(c("  Dry run — no files modified.", "yellow"))
+        print(colorize("  Dry run — no files modified.", "yellow"))
         return
 
     # Phase 1: Compute all new contents (no writes yet)
@@ -446,22 +446,22 @@ def _cmd_move_dir(args, source_abs: str):
             _safe_write(filepath, content)
 
     except Exception as ex:
-        print(c(f"\n  Error during directory move: {ex}", "red"), file=sys.stderr)
-        print(c("  Rolling back...", "yellow"), file=sys.stderr)
+        print(colorize(f"\n  Error during directory move: {ex}", "red"), file=sys.stderr)
+        print(colorize("  Rolling back...", "yellow"), file=sys.stderr)
         for fp, original in written_files.items():
             try:
                 _safe_write(fp, original)
             except OSError:
-                print(c(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
+                print(colorize(f"  WARNING: Could not restore {rel(fp)}", "red"), file=sys.stderr)
         if Path(dest_abs).exists() and not Path(source_abs).exists():
             try:
                 shutil.move(dest_abs, source_abs)
             except OSError:
-                print(c(f"  WARNING: Could not move directory back to {rel(source_abs)}", "red"),
+                print(colorize(f"  WARNING: Could not move directory back to {rel(source_abs)}", "red"),
                       file=sys.stderr)
         raise
 
-    print(c("  Done.", "green"))
+    print(colorize("  Done.", "green"))
     if lang_name == "typescript":
-        print(c("  Run `npx tsc --noEmit` to verify.", "dim"))
+        print(colorize("  Run `npx tsc --noEmit` to verify.", "dim"))
     print()

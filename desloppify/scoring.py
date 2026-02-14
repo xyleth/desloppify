@@ -21,20 +21,16 @@ class Dimension:
 
 
 DIMENSIONS = [
-    Dimension("Import hygiene",      1, ["unused"]),
-    Dimension("Debug cleanliness",   1, ["logs"]),
-    Dimension("API surface",         2, ["exports", "deprecated"]),
-    Dimension("File health",         3, ["structural"]),
-    Dimension("Component design",    3, ["props"]),
-    Dimension("Coupling",            3, ["single_use", "coupling"]),
-    Dimension("Organization",        3, ["orphaned", "flat_dirs", "naming", "facade", "stale_exclude"]),
-    Dimension("Code quality",        3, ["smells", "react", "dict_keys", "global_mutable_config"]),
-    Dimension("Duplication",         3, ["dupes"]),
-    Dimension("Pattern consistency", 3, ["patterns"]),
-    Dimension("Dependency health",   4, ["cycles"]),
-    Dimension("Test health",         4, ["test_coverage"]),
-    Dimension("Security",            4, ["security"]),
-    Dimension("Audit coverage",        4, ["subjective_review"]),
+    Dimension("File health",  3, ["structural"]),
+    Dimension("Code quality", 3, [
+        "unused", "logs", "exports", "deprecated", "props",
+        "smells", "react", "dict_keys", "global_mutable_config",
+        "orphaned", "flat_dirs", "naming", "facade", "stale_exclude",
+        "patterns", "single_use", "coupling",
+    ]),
+    Dimension("Duplication",  3, ["dupes"]),
+    Dimension("Test health",  4, ["test_coverage", "subjective_review"]),
+    Dimension("Security",     4, ["security", "cycles"]),
 ]
 
 TIER_WEIGHTS = {Tier.AUTO_FIX: 1, Tier.QUICK_FIX: 2, Tier.JUDGMENT: 3, Tier.MAJOR_REFACTOR: 4}
@@ -59,13 +55,19 @@ _SECURITY_EXCLUDED_ZONES = {"generated", "vendor"}
 HOLISTIC_MULTIPLIER = 10.0
 HOLISTIC_POTENTIAL = 10
 
-# Number of checks per assessed review dimension (controls sample dampening).
-# Each assessment dimension gets this many checks, making:
-#   sample_factor = ASSESSMENT_CHECKS / MIN_SAMPLE
-#   effective_weight = tier_weight * sample_factor
-# This keeps individual assessment dimensions lightweight, but assessing more
-# dimensions increases total assessment weight proportionally.
-ASSESSMENT_CHECKS = 10
+# Budget: subjective dimensions get this fraction of the overall score.
+# Mechanical dimensions get the remainder. This decouples subjective weight
+# from sample size and dimension count.
+SUBJECTIVE_WEIGHT_FRACTION = 0.25
+
+# Synthetic check count for subjective dimensions in the dimension_scores
+# data structure. Used for pass_rate/weighted_failures display consistency
+# only — does NOT affect overall score weight (that's controlled by
+# SUBJECTIVE_WEIGHT_FRACTION).
+SUBJECTIVE_CHECKS = 10
+
+# Backward-compatible alias
+ASSESSMENT_CHECKS = SUBJECTIVE_CHECKS
 
 # Statuses that count as failures
 _LENIENT_FAILURES = {"open"}
@@ -166,6 +168,7 @@ def compute_dimension_scores(
     potentials: dict[str, int],
     *,
     strict: bool = False,
+    subjective_assessments: dict | None = None,
     review_assessments: dict | None = None,
 ) -> dict[str, dict]:
     """Compute per-dimension scores from findings and potentials.
@@ -173,10 +176,15 @@ def compute_dimension_scores(
     Returns {dimension_name: {"score": float, "checks": int, "issues": int, "detectors": dict}}.
     Dimensions with no active detectors (all potentials = 0 or missing) are excluded.
 
-    If *review_assessments* is provided, each assessed dimension becomes a
+    If *subjective_assessments* is provided, each assessed dimension becomes a
     first-class scoring dimension (tier 4) with score driven by the assessment,
     not by findings.
+
+    *review_assessments* is a deprecated alias for *subjective_assessments*.
     """
+    # Support deprecated kwarg
+    if subjective_assessments is None and review_assessments is not None:
+        subjective_assessments = review_assessments
     results: dict[str, dict] = {}
     failure_set = _STRICT_FAILURES if strict else _LENIENT_FAILURES
 
@@ -214,35 +222,41 @@ def compute_dimension_scores(
             "detectors": detector_detail,
         }
 
-    # Append assessment dimensions — each one a first-class scoring dimension.
+    # Append subjective dimensions — each one a first-class scoring dimension.
     # Unassessed dimensions default to 0% (same as test coverage when no tests exist).
     from .review import DEFAULT_DIMENSIONS
-    assessed = review_assessments or {}
+    assessed = subjective_assessments or {}
     existing_lower = {k.lower() for k in results}
 
     _SHORT_NAMES: dict[str, str] = {
-        "authorization_coherence": "Auth Coherence",
-        "cross_module_architecture": "Cross-Module Arch",
         "abstraction_fitness": "Abstraction Fit",
-        "contract_coherence": "Contract Clarity",
+        "ai_generated_debt": "AI Generated Debt",
     }
 
-    for dim_name in DEFAULT_DIMENSIONS:
-        display = _SHORT_NAMES.get(dim_name, dim_name.replace("_", " ").title())
-        if display.lower() in existing_lower:
-            display = f"{display} (review)"
+    # Merge DEFAULT_DIMENSIONS with any extra assessed dimensions
+    all_dims = list(DEFAULT_DIMENSIONS)
+    for dim_name in assessed:
+        if dim_name not in DEFAULT_DIMENSIONS:
+            all_dims.append(dim_name)
 
+    for dim_name in all_dims:
+        is_default = dim_name in DEFAULT_DIMENSIONS
         assessment = assessed.get(dim_name)
 
-        # Count open review findings for this dimension
+        # Skip extra (non-default) unassessed dimensions with no open findings
+        if not is_default and not assessment:
+            continue
+
+        display = _SHORT_NAMES.get(dim_name, dim_name.replace("_", " ").title())
+        if display.lower() in existing_lower:
+            display = f"{display} (subjective)"
+
         issue_count = sum(
             1 for f in findings.values()
             if f.get("detector") == "review"
             and f["status"] in failure_set
             and f.get("detail", {}).get("dimension") == dim_name
         )
-
-        # Always show review dimensions — unassessed ones appear at 0%
 
         score = max(0, min(100, assessment.get("score", 0))) if assessment else 0.0
         pass_rate = score / 100.0
@@ -250,44 +264,13 @@ def compute_dimension_scores(
         results[display] = {
             "score": round(float(score), 1),
             "tier": 4,
-            "checks": ASSESSMENT_CHECKS,
+            "checks": SUBJECTIVE_CHECKS,
             "issues": issue_count,
-            "detectors": {"review_assessment": {
-                "potential": ASSESSMENT_CHECKS,
+            "detectors": {"subjective_assessment": {
+                "potential": SUBJECTIVE_CHECKS,
                 "pass_rate": round(pass_rate, 4),
                 "issues": issue_count,
-                "weighted_failures": round(ASSESSMENT_CHECKS * (1 - pass_rate), 4),
-            }},
-        }
-
-    # Also include any extra assessed dimensions not in DEFAULT_DIMENSIONS
-    for dim_name, assessment in assessed.items():
-        if dim_name in DEFAULT_DIMENSIONS:
-            continue
-        display = dim_name.replace("_", " ").title()
-        if display.lower() in existing_lower:
-            display = f"{display} (review)"
-        issue_count = sum(
-            1 for f in findings.values()
-            if f.get("detector") == "review"
-            and f["status"] in failure_set
-            and f.get("detail", {}).get("dimension") == dim_name
-        )
-        # Skip unassessed extras with no open findings (shouldn't happen but guard)
-        if issue_count == 0 and not assessment:
-            continue
-        score = max(0, min(100, assessment.get("score", 0)))
-        pass_rate = score / 100.0
-        results[display] = {
-            "score": round(float(score), 1),
-            "tier": 4,
-            "checks": ASSESSMENT_CHECKS,
-            "issues": issue_count,
-            "detectors": {"review_assessment": {
-                "potential": ASSESSMENT_CHECKS,
-                "pass_rate": round(pass_rate, 4),
-                "issues": issue_count,
-                "weighted_failures": round(ASSESSMENT_CHECKS * (1 - pass_rate), 4),
+                "weighted_failures": round(SUBJECTIVE_CHECKS * (1 - pass_rate), 4),
             }},
         }
 
@@ -295,28 +278,51 @@ def compute_dimension_scores(
 
 
 def compute_objective_score(dimension_scores: dict) -> float:
-    """Tier-weighted average of dimension scores, dampened by sample size.
+    """Budget-weighted blend of mechanical and subjective dimension scores.
 
-    Dimensions with fewer than MIN_SAMPLE checks get proportionally reduced
-    weight, preventing small-sample dimensions from swinging the overall score.
+    Mechanical dimensions use sample-dampened tier weights.
+    Subjective dimensions use tier weights without dampening (they are
+    holistic judgments, not statistical samples).
+    The two pools are blended at a fixed ratio (SUBJECTIVE_WEIGHT_FRACTION)
+    so that adding/removing subjective dimensions redistributes weight
+    within the budget rather than changing the budget.
     """
     if not dimension_scores:
         return 100.0
 
-    weighted_sum = 0.0
-    weight_total = 0.0
-    for name, data in dimension_scores.items():
+    mech_sum = 0.0
+    mech_weight = 0.0
+    subj_sum = 0.0
+    subj_weight = 0.0
+
+    for _name, data in dimension_scores.items():
         tier = data["tier"]
         w = TIER_WEIGHTS.get(tier, 2)
-        # Dampen weight for small-sample dimensions
-        sample_factor = min(1.0, data.get("checks", 0) / MIN_SAMPLE)
-        effective_weight = w * sample_factor
-        weighted_sum += data["score"] * effective_weight
-        weight_total += effective_weight
+        is_subjective = "subjective_assessment" in data.get("detectors", {})
 
-    if weight_total == 0:
-        return 100.0
-    return round(weighted_sum / weight_total, 1)
+        if is_subjective:
+            subj_sum += data["score"] * w
+            subj_weight += w
+        else:
+            sample_factor = min(1.0, data.get("checks", 0) / MIN_SAMPLE)
+            effective = w * sample_factor
+            mech_sum += data["score"] * effective
+            mech_weight += effective
+
+    mech_avg = (mech_sum / mech_weight) if mech_weight > 0 else 100.0
+    subj_avg = (subj_sum / subj_weight) if subj_weight > 0 else None
+
+    # Pure mechanical if no subjective dimensions assessed
+    if subj_avg is None:
+        return round(mech_avg, 1)
+
+    # Pure subjective if no mechanical dimensions active
+    if mech_weight == 0:
+        return round(subj_avg, 1)
+
+    # Budget blend
+    blended = mech_avg * (1 - SUBJECTIVE_WEIGHT_FRACTION) + subj_avg * SUBJECTIVE_WEIGHT_FRACTION
+    return round(blended, 1)
 
 
 def compute_score_impact(
@@ -330,7 +336,7 @@ def compute_score_impact(
     Returns estimated point increase in the objective score.
     """
     # Find which dimension this detector belongs to.
-    # Assessment-based dimensions (detector="review_assessment") have no entry
+    # Subjective dimensions (detector="subjective_assessment") have no entry
     # in DIMENSIONS — score changes only via re-review, so impact is 0.
     target_dim = None
     for dim in DIMENSIONS:

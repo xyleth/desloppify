@@ -1,6 +1,6 @@
 """config command: show/set/unset project configuration."""
 
-from ..utils import c
+from ..utils import colorize
 
 
 def cmd_config(args):
@@ -20,7 +20,7 @@ def _config_show(args):
 
     config = args._config
 
-    print(c("\n  Desloppify Configuration\n", "bold"))
+    print(colorize("\n  Desloppify Configuration\n", "bold"))
     for key, schema in CONFIG_SCHEMA.items():
         value = config.get(key, schema.default)
         is_default = value == schema.default
@@ -35,9 +35,9 @@ def _config_show(args):
         else:
             display = str(value)
 
-        default_tag = c(" (default)", "dim") if is_default else ""
+        default_tag = colorize(" (default)", "dim") if is_default else ""
         print(f"  {key:<25} {display}{default_tag}")
-        print(c(f"  {'':25} {schema.description}", "dim"))
+        print(colorize(f"  {'':25} {schema.description}", "dim"))
     print()
 
 
@@ -52,14 +52,14 @@ def _config_set(args):
     try:
         set_config_value(config, key, value)
     except (KeyError, ValueError) as e:
-        print(c(f"  Error: {e}", "red"))
+        print(colorize(f"  Error: {e}", "red"))
         return
 
     save_config(config)
     display = config[key]
     if isinstance(display, int) and key.endswith("_days") and display == 0:
         display = "never (0)"
-    print(c(f"  Set {key} = {display}", "green"))
+    print(colorize(f"  Set {key} = {display}", "green"))
 
 
 def _config_unset(args):
@@ -72,9 +72,9 @@ def _config_unset(args):
     try:
         unset_config_value(config, key)
     except KeyError as e:
-        print(c(f"  Error: {e}", "red"))
+        print(colorize(f"  Error: {e}", "red"))
         return
 
     save_config(config)
     default = CONFIG_SCHEMA[key].default
-    print(c(f"  Reset {key} to default ({default})", "green"))
+    print(colorize(f"  Reset {key} to default ({default})", "green"))

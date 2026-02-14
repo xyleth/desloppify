@@ -7,6 +7,13 @@ import re
 from pathlib import Path
 
 from ....utils import PROJECT_ROOT, find_ts_files
+from ._smell_detectors import (
+    _detect_catch_return_default,
+    _detect_dead_functions,
+    _detect_monster_functions,
+    _detect_switch_no_default,
+    _detect_window_globals,
+)
 from ._smell_helpers import (
     _ts_match_is_in_string,
     _detect_async_no_await,
@@ -14,11 +21,6 @@ from ._smell_helpers import (
     _detect_empty_if_chains,
     _detect_dead_useeffects,
     _detect_swallowed_errors,
-    _detect_monster_functions,
-    _detect_dead_functions,
-    _detect_window_globals,
-    _detect_catch_return_default,
-    _detect_switch_no_default,
 )
 
 

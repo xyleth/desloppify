@@ -9,91 +9,74 @@ description: >
 allowed-tools: Bash(desloppify *)
 ---
 
-# Desloppify — Codebase Health Scanner
+# Desloppify
 
-## Goal
+## 1. Your Job
 
-**Your goal is to get strict scores as high as possible.** Strict scoring counts wontfix items as failures — it's the true measure of codebase health. After every scan, ALWAYS share with the user:
-1. **Overall health** (lenient and strict)
-2. **All dimension scores** (lenient and strict) in a table
-3. **Review dimension scores** (lenient and strict) — these are 0% until reviews are run
+**Get strict scores as high as possible.** After every scan, show the user ALL scores:
 
-Never skip the scores. The user needs to see progress.
+| What | How |
+|------|-----|
+| Overall health | lenient + strict |
+| 5 mechanical dimensions | File health, Code quality, Duplication, Test health, Security |
+| 5 subjective dimensions | Naming Quality, Error Consistency, Abstraction Fit, Logic Clarity, AI Generated Debt |
+
+Never skip scores. The user tracks progress through them.
+
+## 2. Core Loop
+
+```
+scan → follow the tool's strategy → fix or wontfix → rescan
+```
+
+1. `desloppify scan --path src/` — the scan output ends with **INSTRUCTIONS FOR AGENTS**. Follow them. Don't substitute your own analysis.
+2. Fix the issue the tool recommends.
+3. `desloppify resolve fixed "<id>"` — or if it's intentional/acceptable:
+   `desloppify resolve wontfix "<id>" --note "reason why"`
+4. Rescan to verify.
+
+**Wontfix is not free.** It lowers the strict score. The gap between lenient and strict IS wontfix debt. Call it out when:
+- Wontfix count is growing — challenge whether past decisions still hold
+- A dimension is stuck 3+ scans — suggest a different approach
+- Auto-fixers exist for open findings — ask why they haven't been run
+
+## 3. Commands
+
+```bash
+desloppify scan --path src/               # full scan
+desloppify next --count 5                  # top priorities
+desloppify show <pattern>                  # filter by file/detector/ID
+desloppify plan                            # prioritized plan
+desloppify fix <fixer> --dry-run           # auto-fix (dry-run first!)
+desloppify move <src> <dst> --dry-run      # move + update imports
+desloppify resolve fixed|wontfix "<pat>"   # mark resolved
+desloppify review --prepare                # generate subjective review data
+desloppify review --import file.json       # import review results
+```
+
+## 4. Subjective Reviews (biggest score lever)
+
+Score = 50% mechanical + 50% subjective. Subjective starts at 0% until reviewed.
+
+1. `desloppify review --prepare` — writes review data to `query.json`
+2. Launch a subagent to read `query.json`, review files, write assessments:
+   ```json
+   {"assessments": {"naming_quality": 75, ...}, "findings": [...]}
+   ```
+3. `desloppify review --import review_output.json`
+
+Even moderate scores (60-80) dramatically improve overall health.
+
+## 5. Quick Reference
+
+- **Tiers**: T1 auto-fix, T2 quick manual, T3 judgment call, T4 major refactor
+- **Zones**: production/script (scored), test/config/generated/vendor (not scored). Fix with `zone set`.
+- **Auto-fixers** (TS only): `unused-imports`, `unused-vars`, `debug-logs`, `dead-exports`, etc.
+- **query.json**: After any command, has `narrative.actions` with prioritized next steps.
+- `--skip-slow` skips duplicate detection for faster iteration.
+- `--lang python` or `--lang typescript` to force language.
+- Score can temporarily drop after fixes (cascade effects are normal).
 
 ## Prerequisite
 
 !`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: pip install --upgrade git+https://github.com/peteromallet/desloppify.git"`
-
-## Workflow
-
-1. **Scan**: `desloppify scan --path src/` — detect issues, update state, show diff
-2. **Act on scan output**: The scan ends with "INSTRUCTIONS FOR AGENTS". **Execute the recommended strategy immediately.** Do NOT summarize findings or ask what to work on — just start fixing.
-3. **Read query.json**: After ANY command, read `.desloppify/query.json` for structured narrative context (phase, actions, reminders). Follow the `actions` list — it has exact commands.
-4. **Fix → Resolve → Rescan**: Fix the issue, `desloppify resolve fixed "<id>"`, rescan to verify.
-
-## Commands
-
-```bash
-desloppify scan --path src/               # scan, update state, show diff
-desloppify status                          # health score + tier breakdown
-desloppify show <pattern>                  # findings by file, dir, detector, or ID
-desloppify next --count 5                  # highest-priority open findings
-desloppify plan                            # prioritized markdown plan
-desloppify resolve fixed "<pattern>"       # mark as fixed
-desloppify resolve wontfix "<pattern>" --note "reason"
-desloppify fix <fixer> --dry-run           # auto-fix (always dry-run first)
-desloppify move <src> <dst> --dry-run      # move file + update imports
-desloppify detect <name> --path src/       # run one detector raw
-desloppify zone show                       # list files with zones
-desloppify zone set <path> production      # override a misclassified zone
-```
-
-## Narrative Context (query.json)
-
-After every command, `.desloppify/query.json` has a `"narrative"` key. Use it:
-
-- **`actions`**: Prioritized next steps with exact commands. Follow the `type`:
-  - `auto_fix` → run `fix` command (dry-run first)
-  - `reorganize` → use `move` for file restructuring
-  - `refactor` → manual changes needed, read the flagged file
-  - `debt_review` → review wontfix items, some may be worth fixing now
-- **`phase`**: Guides your framing (first_scan, early_momentum, middle_grind, refinement, maintenance, stagnation, regression)
-- **`reminders`**: Surface these to the user
-- **`debt`**: Wontfix gap and trend direction
-
-### Phase Behavior
-- `first_scan` / `early_momentum`: Push toward clearing T1/T2 with auto-fixers
-- `middle_grind`: T3/T4 dominate — push structural refactors
-- `refinement` / `maintenance` (90+): Per-dimension tuning, watch for regressions
-- `stagnation`: Score stuck — surface wontfix debt, suggest revisiting decisions
-- `regression`: Score dropped — investigate cascade effects
-
-### Stay Honest
-- When wontfix count grows, call it out
-- When a dimension is stuck 3+ scans, suggest a different approach
-- When auto-fixers exist for open findings, ask why they haven't been run
-- Always surface the strict-lenient gap as "wontfix debt"
-
-## Tiers
-
-| Tier | Meaning | Action |
-|------|---------|--------|
-| T1 | Auto-fixable | `desloppify fix <fixer> --dry-run` then apply |
-| T2 | Quick manual fix | Fix directly, then resolve |
-| T3 | Needs judgment | Review, fix or wontfix with note |
-| T4 | Major refactor | Decompose, plan before acting |
-
-## Auto-Fixers (TypeScript only)
-
-`unused-imports`, `unused-vars`, `unused-params`, `debug-logs`, `dead-exports`, `dead-useeffect`, `empty-if-chain`. Always `--dry-run` first. Python has no auto-fixers.
-
-## Zones
-
-Files are classified by path: **production** (scored), **test**, **config**, **generated**, **vendor** (not scored), **script** (scored, limited detectors). Use `zone set` to fix misclassifications.
-
-## Tips
-
-- `--skip-slow` skips duplicate detection (faster iteration)
-- `--lang python` or `--lang typescript` to force language
-- Score can temporarily drop after fixes (cascade effects are normal)
-- Note false positives or missing detectors — suggest the user report at https://github.com/peteromallet/desloppify/issues

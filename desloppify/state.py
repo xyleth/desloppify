@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
+import shutil
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from .scoring import TIER_WEIGHTS
-from .utils import PROJECT_ROOT, rel, matches_exclusion
+from .utils import PROJECT_ROOT, rel, matches_exclusion, safe_write_text
 
 
 class Finding(TypedDict):
@@ -53,7 +52,7 @@ def _empty_state() -> dict:
         "score": 0,
         "stats": {},
         "findings": {},
-        "review_assessments": {},
+        "subjective_assessments": {},
     }
 
 
@@ -112,36 +111,18 @@ def save_state(state: dict, path: Path | None = None):
 
     content = json.dumps(state, indent=2, default=_json_default) + "\n"
 
-    # Atomic write: temp file + rename
-    try:
-        fd, tmp_path = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    # Keep a backup of the previous state
+    if p.exists():
+        backup = p.with_suffix(".json.bak")
         try:
-            os.write(fd, content.encode())
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-
-        # Keep a backup of the previous state
-        if p.exists():
-            backup = p.with_suffix(".json.bak")
-            try:
-                import shutil
-                shutil.copy2(str(p), str(backup))
-            except OSError:
-                pass
-
-        os.replace(tmp_path, str(p))
-    except OSError:
-        # Fallback to direct write if atomic write fails
-        try:
-            os.unlink(tmp_path)
-        except (OSError, UnboundLocalError):
+            shutil.copy2(str(p), str(backup))
+        except OSError:
             pass
-        try:
-            p.write_text(content)
-        except OSError as e:
-            import sys
-            print(f"  \u26a0 Could not save state: {e}", file=sys.stderr)
+
+    try:
+        safe_write_text(p, content)
+    except OSError as e:
+        print(f"  Warning: Could not save state: {e}", file=sys.stderr)
 
 
 
@@ -184,11 +165,12 @@ def _update_objective_health(state: dict, findings: dict):
     merged = merge_potentials(pots)
     if not merged:
         return
-    review_assessments = state.get("review_assessments") or None
+    subjective_assessments = (state.get("subjective_assessments")
+                              or state.get("review_assessments") or None)
     ds = compute_dimension_scores(findings, merged, strict=False,
-                                   review_assessments=review_assessments)
+                                   subjective_assessments=subjective_assessments)
     ss = compute_dimension_scores(findings, merged, strict=True,
-                                   review_assessments=review_assessments)
+                                   subjective_assessments=subjective_assessments)
     state["dimension_scores"] = {
         n: {"score": ds[n]["score"], "strict": ss[n]["score"], "checks": ds[n]["checks"],
             "issues": ds[n]["issues"], "tier": ds[n]["tier"], "detectors": ds[n].get("detectors", {})}
@@ -327,9 +309,11 @@ def _auto_resolve_disappeared(
         if fid in current_ids or old["status"] not in ("open", "wontfix"):
             continue
         if lang and old.get("lang") and old["lang"] != lang:
-            skip_lang += 1; continue
+            skip_lang += 1
+            continue
         if scan_path and scan_path != "." and not old["file"].startswith(scan_path.rstrip("/") + "/") and old["file"] != scan_path:
-            skip_path += 1; continue
+            skip_path += 1
+            continue
         if exclude and any(matches_exclusion(old["file"], ex) for ex in exclude):
             continue
         if old.get("detector", "unknown") in suspect_detectors:

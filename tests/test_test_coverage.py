@@ -7,9 +7,13 @@ import os
 import pytest
 
 from desloppify.detectors.test_coverage import (
-    _analyze_test_quality,
     _file_loc,
     _has_testable_logic,
+    _ts_has_testable_logic,
+    detect_test_coverage,
+)
+from desloppify.detectors.test_coverage_mapping import (
+    _analyze_test_quality,
     _import_based_mapping,
     _map_test_to_source,
     _naming_based_mapping,
@@ -19,8 +23,6 @@ from desloppify.detectors.test_coverage import (
     _strip_py_comment,
     _strip_test_markers,
     _transitive_coverage,
-    _ts_has_testable_logic,
-    detect_test_coverage,
 )
 from desloppify.zones import FileZoneMap, Zone, ZoneRule
 
@@ -686,7 +688,7 @@ class TestResolveTsImport:
 
     def test_alias_at_slash(self, tmp_path, monkeypatch):
         """@/components/Button resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage as tc
+        import desloppify.detectors.test_coverage_mapping as tc
         orig = tc.SRC_PATH
         monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
         try:
@@ -698,7 +700,7 @@ class TestResolveTsImport:
 
     def test_alias_tilde(self, tmp_path, monkeypatch):
         """~/utils resolves via SRC_PATH."""
-        import desloppify.detectors.test_coverage as tc
+        import desloppify.detectors.test_coverage_mapping as tc
         orig = tc.SRC_PATH
         monkeypatch.setattr(tc, "SRC_PATH", tmp_path / "src")
         try:

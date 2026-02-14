@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-from .utils import c
+from .utils import colorize
 
 TIER_LABELS = {
     1: "Auto-fixable (imports, logs, dead deprecated)",
@@ -47,7 +47,7 @@ def _generate_findings_from_lang(
     zone_overrides: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """Run detector phases from a LangConfig."""
-    stderr = lambda msg: print(c(msg, "dim"), file=sys.stderr)
+    stderr = lambda msg: print(colorize(msg, "dim"), file=sys.stderr)
 
     # Build zone map if language has zone rules
     if lang.zone_rules and lang.file_finder:
@@ -154,11 +154,11 @@ def _plan_dimension_table(state: dict) -> list[str]:
             f"| {bold}{dim.name}{bold} | T{dim.tier} | "
             f"{checks:,} | {issues} | {score_val:.1f}% | {strict_val:.1f}% | {action} |"
         )
-    # Append assessment dimensions (review-based) not in static DIMENSIONS
+    # Append subjective dimensions not in static DIMENSIONS
     assessment_dims = [(name, ds) for name, ds in sorted(dim_scores.items())
                        if name not in static_names]
     if assessment_dims:
-        lines.append("| **Review Dimensions** | | | | | | |")
+        lines.append("| **Subjective Dimensions** | | | | | | |")
         for name, ds in assessment_dims:
             issues = ds.get("issues", 0)
             score_val = ds.get("score", 100)

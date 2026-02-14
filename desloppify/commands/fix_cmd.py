@@ -3,8 +3,8 @@
 import sys
 from pathlib import Path
 
-from ..lang.base import FixResult
-from ..utils import c, rel
+from ..lang.base import FixerConfig, FixResult
+from ..utils import colorize, rel
 from ._helpers import _state_path, _write_query
 
 
@@ -24,10 +24,10 @@ def cmd_fix(args):
 
     entries = _detect(fixer, path)
     if not entries:
-        print(c(f"No {fixer['label']} found.", "green"))
+        print(colorize(f"No {fixer.label} found.", "green"))
         return
 
-    raw = fixer["fix"](entries, dry_run=dry_run)
+    raw = fixer.fix(entries, dry_run=dry_run)
     if isinstance(raw, FixResult):
         results = raw.entries
         skip_reasons = raw.skip_reasons
@@ -58,7 +58,7 @@ def _cmd_fix_review(args):
 
     lang = _resolve_lang(args)
     if not lang:
-        print(c("Error: could not detect language. Use --lang.", "red"))
+        print(colorize("Error: could not detect language. Use --lang.", "red"))
         sys.exit(1)
 
     sp = _state_path(args)
@@ -69,11 +69,11 @@ def _cmd_fix_review(args):
     data = prepare_review(path, lang, state, files=found_files or None)
 
     if data["total_candidates"] == 0:
-        print(c("\n  All production files have been reviewed. Nothing to do.", "green"))
+        print(colorize("\n  All production files have been reviewed. Nothing to do.", "green"))
         return
 
     # Print review guide to terminal
-    print(c(f"\n  {data['total_candidates']} files need design review\n", "bold"))
+    print(colorize(f"\n  {data['total_candidates']} files need design review\n", "bold"))
 
     dims = data.get("dimensions", [])
     prompts = data.get("dimension_prompts", {})
@@ -81,79 +81,77 @@ def _cmd_fix_review(args):
         prompt = prompts.get(dim)
         if not prompt:
             continue
-        print(c(f"  {dim}", "cyan"))
-        print(c(f"    {prompt['description']}", "dim"))
-        print(c("    Look for:", "dim"))
+        print(colorize(f"  {dim}", "cyan"))
+        print(colorize(f"    {prompt['description']}", "dim"))
+        print(colorize("    Look for:", "dim"))
         for item in prompt.get("look_for", []):
-            print(c(f"      - {item}", "dim"))
+            print(colorize(f"      - {item}", "dim"))
         skip = prompt.get("skip", [])
         if skip:
-            print(c("    Skip:", "dim"))
+            print(colorize("    Skip:", "dim"))
             for item in skip:
-                print(c(f"      - {item}", "dim"))
+                print(colorize(f"      - {item}", "dim"))
         print()
 
     lang_guide = data.get("lang_guidance") or LANG_GUIDANCE.get(lang.name, {})
     if lang_guide:
-        print(c(f"  Language: {lang.name}", "cyan"))
+        print(colorize(f"  Language: {lang.name}", "cyan"))
         if lang_guide.get("naming"):
-            print(c(f"    Naming: {lang_guide['naming']}", "dim"))
+            print(colorize(f"    Naming: {lang_guide['naming']}", "dim"))
         for pattern in lang_guide.get("patterns", []):
-            print(c(f"    - {pattern}", "dim"))
+            print(colorize(f"    - {pattern}", "dim"))
         print()
 
     _write_query(data)
-    print(c("  Review data written to .desloppify/query.json", "dim"))
-    print(c("\n  Next steps:", "cyan"))
-    print(c("  1. Read query.json — it contains file contents and context", "dim"))
-    print(c("  2. Evaluate each file against the dimensions above", "dim"))
-    print(c("  3. Write findings as JSON array to a file (e.g. findings.json)", "dim"))
-    print(c("  4. Import: desloppify review --import findings.json", "dim"))
-    print(c("  5. For codebase-wide review: desloppify review --prepare --holistic", "dim"))
+    print(colorize("  Review data written to .desloppify/query.json", "dim"))
+    print(colorize("\n  Next steps:", "cyan"))
+    print(colorize("  1. Read query.json — it contains file contents and context", "dim"))
+    print(colorize("  2. Evaluate each file against the dimensions above", "dim"))
+    print(colorize("  3. Write findings as JSON array to a file (e.g. findings.json)", "dim"))
+    print(colorize("  4. Import: desloppify review --import findings.json", "dim"))
+    print(colorize("  5. For codebase-wide review: desloppify review --prepare --holistic", "dim"))
     print()
 
 
 _COMMAND_POST_FIX: dict[str, object] = {}  # populated after _cascade_import_cleanup is defined
 
 
-def _load_fixer(args, fixer_name: str) -> dict:
+def _load_fixer(args, fixer_name: str) -> FixerConfig:
     """Resolve fixer from language plugin registry, or exit."""
     from ._helpers import _resolve_lang
     lang = _resolve_lang(args)
     if not lang:
-        print(c("Could not detect language. Use --lang to specify.", "red"))
+        print(colorize("Could not detect language. Use --lang to specify.", "red"))
         sys.exit(1)
     if not lang.fixers:
-        print(c(f"No auto-fixers available for {lang.name}.", "red"))
+        print(colorize(f"No auto-fixers available for {lang.name}.", "red"))
         sys.exit(1)
     if fixer_name not in lang.fixers:
         available = ", ".join(sorted(lang.fixers.keys()))
-        print(c(f"Unknown fixer: {fixer_name}", "red"))
-        print(c(f"  Available: {available}", "dim"))
+        print(colorize(f"Unknown fixer: {fixer_name}", "red"))
+        print(colorize(f"  Available: {available}", "dim"))
         sys.exit(1)
     fc = lang.fixers[fixer_name]
-    fixer = {k: getattr(fc, k) for k in
-             ("label", "detect", "fix", "detector", "verb", "dry_verb", "post_fix")}
     # Attach command-level post-fix hooks (e.g. cascading import cleanup)
-    if fixer_name in _COMMAND_POST_FIX and not fixer.get("post_fix"):
-        fixer["post_fix"] = _COMMAND_POST_FIX[fixer_name]
-    return fixer
+    if fixer_name in _COMMAND_POST_FIX and not fc.post_fix:
+        fc.post_fix = _COMMAND_POST_FIX[fixer_name]
+    return fc
 
 
-def _detect(fixer: dict, path: Path) -> list[dict]:
+def _detect(fixer: FixerConfig, path: Path) -> list[dict]:
     """Run detection and print summary."""
-    print(c(f"\nDetecting {fixer['label']}...", "dim"), file=sys.stderr)
-    entries = fixer["detect"](path)
+    print(colorize(f"\nDetecting {fixer.label}...", "dim"), file=sys.stderr)
+    entries = fixer.detect(path)
     file_count = len(set(e["file"] for e in entries))
-    print(c(f"  Found {len(entries)} {fixer['label']} across {file_count} files\n", "dim"), file=sys.stderr)
+    print(colorize(f"  Found {len(entries)} {fixer.label} across {file_count} files\n", "dim"), file=sys.stderr)
     return entries
 
 
-def _print_fix_summary(fixer, results, total_items, total_lines, dry_run):
+def _print_fix_summary(fixer: FixerConfig, results, total_items, total_lines, dry_run):
     """Print the per-file fix summary table."""
-    verb = fixer.get("dry_verb", "Would fix") if dry_run else fixer.get("verb", "Fixed")
+    verb = fixer.dry_verb if dry_run else fixer.verb
     lines_str = f" ({total_lines} lines)" if total_lines else ""
-    print(c(f"\n  {verb} {total_items} {fixer['label']} across {len(results)} files{lines_str}\n", "bold"))
+    print(colorize(f"\n  {verb} {total_items} {fixer.label} across {len(results)} files{lines_str}\n", "bold"))
     for r in results[:30]:
         syms = ", ".join(r["removed"][:5])
         if len(r["removed"]) > 5:
@@ -171,17 +169,17 @@ def _apply_and_report(args, path, fixer, fixer_name, entries, results, total_ite
     sp = _state_path(args)
     state = load_state(sp)
     prev_score = state.get("score", 0)
-    resolved_ids = _resolve_fixer_results(state, results, fixer["detector"], fixer_name)
+    resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
     save_state(state, sp)
 
     delta = state["score"] - prev_score
     delta_str = f" ({'+' if delta > 0 else ''}{delta})" if delta else ""
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
     print(f"  Score: {state['score']}/100{delta_str}" +
-          c(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
+          colorize(f"  (strict: {state.get('strict_score', 0)}/100)", "dim"))
 
-    if fixer.get("post_fix"):
-        fixer["post_fix"](path, state, prev_score, False)
+    if fixer.post_fix:
+        fixer.post_fix(path, state, prev_score, False)
         save_state(state, sp)
 
     if skip_reasons is None:
@@ -214,12 +212,12 @@ def _report_dry_run(args, fixer_name, entries, results, total_items):
                   "narrative": narrative})
     skipped = len(entries) - total_items
     if skipped > 0:
-        print(c(f"\n  ── Review ──", "dim"))
-        print(c(f"  {total_items} of {len(entries)} entries would be fixed ({skipped} skipped).", "dim"))
+        print(colorize(f"\n  ── Review ──", "dim"))
+        print(colorize(f"  {total_items} of {len(entries)} entries would be fixed ({skipped} skipped).", "dim"))
         for q in ["Do the sample changes look correct? Any false positives?",
                    "Are the skipped items truly unfixable, or could the fixer be improved?",
                    "Ready to run without --dry-run? (git push first!)"]:
-            print(c(f"  - {q}", "dim"))
+            print(colorize(f"  - {q}", "dim"))
 
 
 def _resolve_fixer_results(state, results, detector, fixer_name):
@@ -240,21 +238,21 @@ def _warn_uncommitted_changes():
     try:
         r = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=5)
         if r.stdout.strip():
-            print(c("\n  ⚠ You have uncommitted changes. Consider running:", "yellow"))
-            print(c("    git add -A && git commit -m 'pre-fix checkpoint' && git push", "yellow"))
-            print(c("    This ensures you can revert if the fixer produces unexpected results.\n", "dim"))
+            print(colorize("\n  ⚠ You have uncommitted changes. Consider running:", "yellow"))
+            print(colorize("    git add -A && git commit -m 'pre-fix checkpoint' && git push", "yellow"))
+            print(colorize("    This ensures you can revert if the fixer produces unexpected results.\n", "dim"))
     except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
         pass
 
 def _show_dry_run_samples(entries, results):
     import random
     random.seed(42)
-    print(c("\n  ── Sample changes (before → after) ──", "cyan"))
+    print(colorize("\n  ── Sample changes (before → after) ──", "cyan"))
     for r in random.sample(results, min(5, len(results))):
         _print_file_sample(r, entries)
     skipped = sum(len(r["removed"]) for r in results)
     if len(entries) > skipped:
-        print(c(f"\n  Note: {len(entries) - skipped} of {len(entries)} entries were skipped "
+        print(colorize(f"\n  Note: {len(entries) - skipped} of {len(entries)} entries were skipped "
                 "(complex patterns, rest elements, etc.)", "dim"))
     print()
 
@@ -273,12 +271,12 @@ def _print_file_sample(result, entries):
         if line_idx < 0 or line_idx >= len(lines):
             continue
         if shown == 0:
-            print(c(f"\n  {rel(filepath)}:", "cyan"))
+            print(colorize(f"\n  {rel(filepath)}:", "cyan"))
         name = e.get("name", e.get("summary", "?"))
         ctx_s, ctx_e = max(0, line_idx - 1), min(len(lines), line_idx + 2)
-        print(c(f"    {name} (line {line_idx + 1}):", "dim"))
+        print(colorize(f"    {name} (line {line_idx + 1}):", "dim"))
         for i in range(ctx_s, ctx_e):
-            marker = c("  →", "red") if i == line_idx else "   "
+            marker = colorize("  →", "red") if i == line_idx else "   "
             print(f"    {marker} {i+1:4d}  {lines[i][:90]}")
         shown += 1
 
@@ -286,15 +284,15 @@ def _cascade_import_cleanup(path: Path, state: dict, prev_score: int, dry_run: b
     """Post-fix hook: removing debug logs may leave orphaned imports."""
     from ..lang.typescript.detectors.unused import detect_unused
     from ..lang.typescript.fixers import fix_unused_imports
-    print(c("\n  Running cascading import cleanup...", "dim"), file=sys.stderr)
+    print(colorize("\n  Running cascading import cleanup...", "dim"), file=sys.stderr)
     entries, _ = detect_unused(path, category="imports")
     results = fix_unused_imports(entries, dry_run=dry_run) if entries else []
     if not results:
-        print(c("  Cascade: no orphaned imports found", "dim"))
+        print(colorize("  Cascade: no orphaned imports found", "dim"))
         return
     n_removed = sum(len(r["removed"]) for r in results)
     n_lines = sum(r["lines_removed"] for r in results)
-    print(c(f"  Cascade: removed {n_removed} now-orphaned imports "
+    print(colorize(f"  Cascade: removed {n_removed} now-orphaned imports "
             f"from {len(results)} files ({n_lines} lines)", "green"))
     resolved = _resolve_fixer_results(state, results, "unused", "debug-logs (cascade)")
     if resolved:
@@ -320,12 +318,12 @@ def _print_fix_retro(fixer_name: str, detected: int, fixed: int, resolved: int,
                      skip_reasons: dict[str, int] | None = None):
     """Print post-fix reflection prompts with skip reason breakdown."""
     skipped = detected - fixed
-    print(c("\n  ── Post-fix check ──", "dim"))
-    print(c(f"  Fixed {fixed}/{detected} ({skipped} skipped, {resolved} findings resolved)", "dim"))
+    print(colorize("\n  ── Post-fix check ──", "dim"))
+    print(colorize(f"  Fixed {fixed}/{detected} ({skipped} skipped, {resolved} findings resolved)", "dim"))
     if skip_reasons and skipped > 0:
-        print(c(f"\n  Skip reasons ({skipped} total):", "dim"))
+        print(colorize(f"\n  Skip reasons ({skipped} total):", "dim"))
         for reason, count in sorted(skip_reasons.items(), key=lambda x: -x[1]):
-            print(c(f"    {count:4d}  {_SKIP_REASON_LABELS.get(reason, reason)}", "dim"))
+            print(colorize(f"    {count:4d}  {_SKIP_REASON_LABELS.get(reason, reason)}", "dim"))
         print()
     checklist = ["Run `npx tsc --noEmit` — does it still build?",
                  "Spot-check a few changed files — do the edits look correct?"]
@@ -334,6 +332,6 @@ def _print_fix_retro(fixer_name: str, detected: int, fixed: int, resolved: int,
     checklist += ["Run `desloppify scan` to update state. Did score improve as expected?",
                   "Are there cascading effects? (e.g., removing vars may orphan imports)",
                   "`git diff --stat` — review before committing. Anything surprising?"]
-    print(c("  Checklist:", "dim"))
+    print(colorize("  Checklist:", "dim"))
     for i, item in enumerate(checklist, 1):
-        print(c(f"  {i}. {item}", "dim"))
+        print(colorize(f"  {i}. {item}", "dim"))

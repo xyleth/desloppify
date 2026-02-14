@@ -1,4 +1,4 @@
-"""Review dimension definitions, prompts, and system prompt constants."""
+"""Review dimension definitions, prompts, and configuration dicts."""
 
 from __future__ import annotations
 
@@ -254,10 +254,9 @@ enough to follow without further research."""
 # ── Review dimensions and prompts ─────────────────────────────────
 
 DEFAULT_DIMENSIONS = [
-    "naming_quality", "comment_quality", "error_consistency",
-    "abstraction_fitness", "logic_clarity", "contract_coherence",
-    "type_safety", "cross_module_architecture",
-    "ai_generated_debt", "authorization_coherence",
+    "naming_quality", "error_consistency",
+    "abstraction_fitness", "logic_clarity",
+    "ai_generated_debt",
 ]
 
 DIMENSION_PROMPTS = {

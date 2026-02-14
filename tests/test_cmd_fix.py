@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from desloppify.lang.base import FixResult
+from desloppify.lang.base import FixerConfig, FixResult
 from desloppify.commands.fix_cmd import (
     _resolve_fixer_results,
     _print_fix_summary,
@@ -162,7 +162,7 @@ class TestPrintFixSummary:
         from desloppify.commands import fix_cmd
         monkeypatch.setattr(fix_cmd, "rel", lambda p: p)
 
-        fixer = {"label": "unused imports", "verb": "Removed", "dry_verb": "Would remove"}
+        fixer = FixerConfig(label="unused imports", detect=lambda: None, fix=lambda: None, detector="unused", verb="Removed", dry_verb="Would remove")
         results = [{"file": "a.ts", "removed": ["foo", "bar"], "lines_removed": 5}]
         _print_fix_summary(fixer, results, 2, 5, dry_run=False)
         out = capsys.readouterr().out
@@ -174,7 +174,7 @@ class TestPrintFixSummary:
         from desloppify.commands import fix_cmd
         monkeypatch.setattr(fix_cmd, "rel", lambda p: p)
 
-        fixer = {"label": "unused imports", "verb": "Removed", "dry_verb": "Would remove"}
+        fixer = FixerConfig(label="unused imports", detect=lambda: None, fix=lambda: None, detector="unused", verb="Removed", dry_verb="Would remove")
         results = [{"file": "a.ts", "removed": ["foo"]}]
         _print_fix_summary(fixer, results, 1, 0, dry_run=True)
         out = capsys.readouterr().out

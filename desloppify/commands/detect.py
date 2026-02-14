@@ -2,7 +2,7 @@
 
 import sys
 
-from ..utils import c
+from ..utils import colorize
 
 
 def cmd_detect(args):
@@ -14,12 +14,12 @@ def cmd_detect(args):
     lang = _resolve_lang(args)
 
     if not lang:
-        print(c("No language specified. Use --lang python or --lang typescript.", "red"))
+        print(colorize("No language specified. Use --lang python or --lang typescript.", "red"))
         sys.exit(1)
 
     # Validate detector name
     if detector not in lang.detect_commands:
-        print(c(f"Unknown detector for {lang.name}: {detector}", "red"))
+        print(colorize(f"Unknown detector for {lang.name}: {detector}", "red"))
         print(f"  Available: {', '.join(sorted(lang.detect_commands))}")
         sys.exit(1)
 

@@ -366,8 +366,8 @@ def _analyze_test_quality(
 
         # Strip comments before pattern matching
         if lang_name != "python":
-            from ..lang.typescript.detectors._smell_helpers import _strip_ts_comments
-            stripped = _strip_ts_comments(content)
+            from ..utils import strip_c_style_comments
+            stripped = strip_c_style_comments(content)
         else:
             stripped = "\n".join(_strip_py_comment(line) for line in content.splitlines())
 

@@ -4,7 +4,7 @@ Detects subjective and mechanical code-base issues - everything from poor qualit
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
 
-<img src="scorecard.png" width="100%">
+<img src="assets/scorecard.png" width="100%">
 
 Adding a new language plugin? See `ADDING_A_NEW_LANGUAGE.md`.
 
@@ -118,9 +118,9 @@ Score is weighted (T4 = 4x T1).
 | `--lang <name>` | auto-detected | Language selection (each has own state) |
 | `--exclude <dirs>` | none | Directories to skip (e.g. `--exclude migrations tests`) |
 | `--no-badge` | false | Skip scorecard image generation |
-| `--badge-path <path>` | `scorecard.png` | Output path for scorecard image |
+| `--badge-path <path>` | `assets/scorecard.png` | Output path for scorecard image |
 | `DESLOPPIFY_NO_BADGE` | — | Set to `true` to disable badge via env |
-| `DESLOPPIFY_BADGE_PATH` | `scorecard.png` | Badge output path via env |
+| `DESLOPPIFY_BADGE_PATH` | `assets/scorecard.png` | Badge output path via env |
 
 Project config values (stored in `.desloppify/config.json`) are managed via:
 - `desloppify config show`

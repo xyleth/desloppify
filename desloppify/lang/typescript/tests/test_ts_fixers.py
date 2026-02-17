@@ -300,6 +300,69 @@ class TestFixUnusedImports:
         assert len(results) == 1
         assert ts_file.read_text() == original
 
+    def test_removes_alias_by_local_name_with_inline_comment(self, tmp_path):
+        """Unused alias bindings are removed even when import has a trailing comment."""
+        from desloppify.lang.typescript.fixers.imports import fix_unused_imports
+
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            "import { foo as bar, baz } from './m'; // keep\n"
+            "console.log(baz)\n"
+        )
+        entries = [
+            {"file": str(ts_file), "name": "bar", "line": 1, "category": "imports"},
+        ]
+
+        results = fix_unused_imports(entries, dry_run=False)
+        content = ts_file.read_text()
+
+        assert len(results) == 1
+        assert results[0]["removed"] == ["bar"]
+        assert "foo as bar" not in content
+        assert "{ baz }" in content
+        assert "// keep" in content
+
+    def test_removes_type_prefixed_named_member(self, tmp_path):
+        """`type Foo` members in named imports are removable by the `Foo` symbol."""
+        from desloppify.lang.typescript.fixers.imports import fix_unused_imports
+
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            "import { type Request, randomUUID } from 'crypto';\n"
+            "console.log(randomUUID())\n"
+        )
+        entries = [
+            {"file": str(ts_file), "name": "Request", "line": 1, "category": "imports"},
+        ]
+
+        results = fix_unused_imports(entries, dry_run=False)
+        content = ts_file.read_text()
+
+        assert len(results) == 1
+        assert results[0]["removed"] == ["Request"]
+        assert "type Request" not in content
+        assert "randomUUID" in content
+
+    def test_removes_namespace_import_by_alias(self, tmp_path):
+        """Namespace imports are removable when tsc reports the alias as unused."""
+        from desloppify.lang.typescript.fixers.imports import fix_unused_imports
+
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            "import * as utils from './utils';\n"
+            "console.log('x')\n"
+        )
+        entries = [
+            {"file": str(ts_file), "name": "utils", "line": 1, "category": "imports"},
+        ]
+
+        results = fix_unused_imports(entries, dry_run=False)
+        content = ts_file.read_text()
+
+        assert len(results) == 1
+        assert results[0]["removed"] == ["utils"]
+        assert "import * as utils" not in content
+
 
 # =====================================================================
 # vars.py — fix_unused_vars

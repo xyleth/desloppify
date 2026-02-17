@@ -70,6 +70,18 @@ class TestBuildDepGraph:
         button_key = str((tmp_path / "Button.tsx").resolve())
         assert button_key in graph[app_key]["imports"]
 
+    def test_import_with_js_specifier_resolves_ts_file(self, tmp_path):
+        """NodeNext-style `./x.js` specifiers resolve to source `x.ts` files."""
+        from desloppify.lang.typescript.detectors.deps import build_dep_graph
+
+        _write(tmp_path, "helpers.ts", "export const x = 1;\n")
+        _write(tmp_path, "app.ts", "import { x } from './helpers.js';\n")
+
+        graph = build_dep_graph(tmp_path)
+        app_key = str((tmp_path / "app.ts").resolve())
+        helpers_key = str((tmp_path / "helpers.ts").resolve())
+        assert helpers_key in graph[app_key]["imports"]
+
     def test_index_file_resolution(self, tmp_path):
         """Graph resolves directory imports to index.ts files."""
         from desloppify.lang.typescript.detectors.deps import build_dep_graph
@@ -142,6 +154,29 @@ class TestBuildDepGraph:
         b_key = str((tmp_path / "b.ts").resolve())
         assert b_key in graph[a_key]["imports"]
         assert a_key in graph[b_key]["imports"]
+
+    def test_js_specifier_imports_do_not_create_false_orphans(self, tmp_path):
+        """Files imported through `./x.js` should not be flagged as orphaned."""
+        from desloppify.lang.typescript.detectors.deps import build_dep_graph
+        from desloppify.detectors import orphaned as orphaned_detector_mod
+
+        _write(tmp_path, "shared.ts", "export const shared = 1;\n")
+        _write(tmp_path, "utils.ts", "import { shared } from './shared.js';\nexport const x = shared;\n")
+        _write(tmp_path, "main.ts", "import { x } from './utils.js';\nconsole.log(x)\n")
+
+        graph = build_dep_graph(tmp_path)
+        utils_key = str((tmp_path / "utils.ts").resolve())
+        assert graph[utils_key]["importer_count"] == 1
+
+        orphans, _ = orphaned_detector_mod.detect_orphaned_files(
+            tmp_path,
+            graph,
+            extensions=[".ts", ".tsx"],
+            extra_entry_patterns=[],
+            extra_barrel_names=set(),
+        )
+        orphan_files = {entry["file"] for entry in orphans}
+        assert utils_key not in orphan_files
 
 
 # ── ts_alias_resolver ────────────────────────────────────────

@@ -15,7 +15,6 @@ def fix_unused_imports(entries: list[dict], *, dry_run: bool = False) -> list[di
     Returns:
         List of {file, removed: [symbols], lines_removed: int} dicts.
     """
-    # Filter to imports only and group by file
     import_entries = [e for e in entries if e["category"] == "imports"]
 
     def transform(lines, file_entries):
@@ -24,8 +23,12 @@ def fix_unused_imports(entries: list[dict], *, dry_run: bool = False) -> list[di
         for e in file_entries:
             unused_by_line[e["line"]].append(e["name"])
 
-        new_lines = process_unused_import_lines(lines, unused_symbols, unused_by_line)
-        removed = [e["name"] for e in file_entries]
+        new_lines, removed_symbols = process_unused_import_lines(lines, unused_symbols, unused_by_line)
+        removed = []
+        for e in file_entries:
+            name = e["name"]
+            if name in removed_symbols and name not in removed:
+                removed.append(name)
         return new_lines, removed
 
     return apply_fixer(import_entries, transform, dry_run=dry_run)

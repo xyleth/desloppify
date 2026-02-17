@@ -17,6 +17,7 @@ LOGGER = logging.getLogger(__name__)
 _FRAMEWORK_EXTENSIONS = (".svelte", ".vue", ".astro")
 
 _RESOLVE_EXTENSIONS = ("", ".ts", ".tsx", "/index.ts", "/index.tsx")
+_JS_SPECIFIER_EXTENSIONS = {".js", ".mjs", ".cjs"}
 
 # ── tsconfig paths resolution ──────────────────────────────
 
@@ -108,6 +109,35 @@ def _extract_paths(data: dict, base_dir: Path) -> dict[str, str] | None:
 # ── Import resolution helpers ──────────────────────────────
 
 
+def _iter_resolve_candidates(target: Path):
+    """Yield filesystem candidates for a module specifier target."""
+    seen: set[str] = set()
+
+    def _emit(candidate: Path):
+        key = str(candidate)
+        if key in seen:
+            return
+        seen.add(key)
+        yield candidate
+
+    if target.suffix in {".ts", ".tsx"}:
+        yield from _emit(target)
+        return
+
+    if target.suffix in _JS_SPECIFIER_EXTENSIONS:
+        # In ESM/NodeNext codebases, source imports often use `.js` while files are `.ts/.tsx`.
+        stem = target.with_suffix("")
+        yield from _emit(Path(str(stem) + ".ts"))
+        yield from _emit(Path(str(stem) + ".tsx"))
+        yield from _emit(Path(str(stem) + "/index.ts"))
+        yield from _emit(Path(str(stem) + "/index.tsx"))
+        yield from _emit(target)
+        return
+
+    for ext in _RESOLVE_EXTENSIONS:
+        yield from _emit(Path(str(target) + ext))
+
+
 def _resolve_alias(module_path: str, tsconfig_paths: dict[str, str],
                    project_root: Path) -> Path | None:
     """Resolve a tsconfig path alias to absolute path, or None if not an alias."""
@@ -136,8 +166,7 @@ def _resolve_module(module_path: str, filepath: str,
     if target is None:
         return  # External package — not in our graph
 
-    for ext in _RESOLVE_EXTENSIONS:
-        candidate = Path(str(target) + ext)
+    for candidate in _iter_resolve_candidates(target):
         if candidate.is_file():
             target_resolved = str(candidate)
             graph[source_resolved]["imports"].add(target_resolved)

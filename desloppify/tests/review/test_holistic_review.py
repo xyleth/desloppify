@@ -1823,7 +1823,7 @@ class TestNewInvestigationBatches:
         for relpath in (
             "README.md",
             "DEVELOPMENT_PHILOSOPHY.md",
-            "desloppify/STRUCTURE.md",
+            "desloppify/README.md",
             "pyproject.toml",
         ):
             full_path = tmp_path / relpath
@@ -1853,7 +1853,7 @@ class TestNewInvestigationBatches:
         governance = next(b for b in batches if b["name"] == "Governance & Contracts")
         assert "README.md" in governance["files_to_read"]
         assert "DEVELOPMENT_PHILOSOPHY.md" in governance["files_to_read"]
-        assert "desloppify/STRUCTURE.md" in governance["files_to_read"]
+        assert "desloppify/README.md" in governance["files_to_read"]
         assert "pyproject.toml" in governance["files_to_read"]
         assert "core.py" in governance["files_to_read"]
         assert "high_level_elegance" in governance["dimensions"]

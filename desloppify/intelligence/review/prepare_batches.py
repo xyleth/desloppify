@@ -18,7 +18,7 @@ _EXTENSIONLESS_FILENAMES = {
 _GOVERNANCE_REFERENCE_FILES: tuple[str, ...] = (
     "README.md",
     "DEVELOPMENT_PHILOSOPHY.md",
-    "desloppify/STRUCTURE.md",
+    "desloppify/README.md",
     "pyproject.toml",
 )
 

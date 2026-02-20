@@ -1,0 +1,130 @@
+"""Supplemental Python smell detection via ruff (B/E/W-series rules).
+
+Runs ``ruff check`` with a targeted rule set that covers patterns not already
+detected by the existing regex/AST smells in smells.py. Produces smell entries
+in the same format as detect_smells() so they flow through make_smell_findings()
+without any plumbing changes.
+
+Falls back gracefully to [] when ruff is not installed, allowing the existing
+smells to remain the only source.
+
+Rules chosen are deliberately non-overlapping with smells.py:
+  B007  – unused loop control variable
+  B023  – function definition does not bind loop variable
+  B026  – star-arg after keyword argument
+  B904  – raise inside except without ``from err``
+  E711  – comparison to None with == / !=
+  E712  – comparison to True/False with == / !=
+  W605  – invalid escape sequence (e.g. "\\d" instead of r"\\d")
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import subprocess
+from collections import defaultdict
+from pathlib import Path
+
+from desloppify import utils as _utils_mod
+from desloppify.utils import PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
+
+# Maps ruff code → (smell_id, label, severity)
+_RULE_MAP: dict[str, tuple[str, str, str]] = {
+    "B007": ("unused_loop_var", "Unused loop control variable", "medium"),
+    "B023": ("func_in_loop", "Function definition doesn't bind loop variable", "high"),
+    "B026": ("star_after_keyword", "Star-arg unpacking after keyword argument", "high"),
+    "B904": ("raise_without_from", "Raise inside except without `from err`", "medium"),
+    "E711": ("none_comparison", "Comparison to None with == / !=  (use `is`)", "medium"),
+    "E712": ("bool_comparison", "Comparison to True/False with == / != (use `is`)", "low"),
+    "W605": ("invalid_escape", "Invalid escape sequence (use raw string or \\\\)", "medium"),
+}
+
+_SELECT = ",".join(_RULE_MAP)
+
+
+def detect_with_ruff_smells(path: Path) -> list[dict] | None:
+    """Run ruff on supplemental B/E/W rules and return smell entries, or None on failure.
+
+    Each entry matches the format expected by make_smell_findings():
+        {
+            "id": smell_id,
+            "label": label,
+            "severity": "high"|"medium"|"low",
+            "matches": [{"file": str, "line": int}, ...],
+        }
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ruff",
+                "check",
+                "--select",
+                _SELECT,
+                "--output-format",
+                "json",
+                "--no-fix",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        logger.debug("ruff smells: ruff not found — skipping supplemental smell detection")
+        return None
+    except subprocess.TimeoutExpired:
+        logger.debug("ruff smells: timed out")
+        return None
+
+    stdout = result.stdout.strip()
+    if not stdout:
+        return []
+
+    try:
+        diagnostics: list[dict] = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        logger.debug("ruff smells: JSON parse error: %s", exc)
+        return None
+
+    exclusions = _utils_mod.get_exclusions()
+
+    # Group diagnostics by (code, file) → list of matches.
+    # Then convert to smell entry format.
+    by_code_file: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for diag in diagnostics:
+        code = diag.get("code", "")
+        if code not in _RULE_MAP:
+            continue
+        filepath = diag.get("filename", "")
+        if not filepath:
+            continue
+        if exclusions and any(_utils_mod.matches_exclusion(filepath, ex) for ex in exclusions):
+            continue
+        location = diag.get("location", {})
+        line = location.get("row", 0) if isinstance(location, dict) else 0
+        by_code_file[(code, filepath)].append({"file": filepath, "line": line})
+
+    # Aggregate by code across all files.
+    by_code: dict[str, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
+    for (code, filepath), matches in by_code_file.items():
+        by_code[code][filepath].extend(matches)
+
+    entries: list[dict] = []
+    for code, files in by_code.items():
+        smell_id, label, severity = _RULE_MAP[code]
+        all_matches = [m for ms in files.values() for m in ms]
+        entries.append(
+            {
+                "id": smell_id,
+                "label": label,
+                "severity": severity,
+                "matches": all_matches,
+            }
+        )
+
+    logger.debug("ruff smells: %d supplemental smell entries", len(entries))
+    return entries

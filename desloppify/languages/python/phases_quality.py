@@ -16,12 +16,17 @@ from desloppify.languages.python.detectors import (
     mutable_state as mutable_state_detector_mod,
 )
 from desloppify.languages.python.detectors import smells as smells_detector_mod
+from desloppify.languages.python.detectors.ruff_smells import detect_with_ruff_smells
 from desloppify.utils import log
 
 
 def phase_smells(path: Path, lang) -> tuple[list[dict], dict[str, int]]:
     """Run file/code smell detectors plus cross-file signature variance."""
     entries, total_files = smells_detector_mod.detect_smells(path)
+    # Supplement with ruff B/E/W rules not covered by the regex smells above.
+    ruff_entries = detect_with_ruff_smells(path)
+    if ruff_entries:
+        entries = entries + ruff_entries
     results = make_smell_findings(entries, log)
 
     functions = lang.extract_functions(path) if lang.extract_functions else []

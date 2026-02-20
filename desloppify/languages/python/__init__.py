@@ -21,6 +21,7 @@ from desloppify.languages.python.detectors.deps import build_dep_graph
 from desloppify.languages.python.detectors.private_imports import (
     detect_private_imports as detect_python_private_imports,
 )
+from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
 from desloppify.languages.python.detectors.security import detect_python_security
 from desloppify.languages.python.extractors import extract_py_functions
 from desloppify.languages.python.phases import (
@@ -105,9 +106,30 @@ def _py_extract_functions(path: Path) -> list:
     return functions
 
 
+def _scan_root_from_files(files: list[str]) -> Path | None:
+    """Derive the common ancestor directory from a list of file paths."""
+    import os
+
+    py_files = [f for f in files if f.endswith(".py")]
+    if not py_files:
+        return None
+    try:
+        common = Path(os.path.commonpath(py_files))
+        return common if common.is_dir() else common.parent
+    except ValueError:
+        return None
+
+
 @register_lang("python")
 class PythonConfig(LangConfig):
     def detect_lang_security(self, files, zone_map):
+        # Try bandit first (more comprehensive than regex/AST fallback).
+        scan_root = _scan_root_from_files(files)
+        if scan_root is not None:
+            bandit_result = detect_with_bandit(scan_root, zone_map)
+            if bandit_result is not None:
+                return bandit_result
+        # Fall back to built-in regex/AST security checks.
         return detect_python_security(files, zone_map)
 
     def detect_private_imports(self, graph, zone_map):

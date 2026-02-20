@@ -23,18 +23,12 @@ from desloppify.languages.typescript.detectors.knip_adapter import detect_with_k
 
 
 class TestKnipAdapter:
-    def _make_knip_json(self, *, files=None, issues=None) -> str:
-        return json.dumps({"files": files or [], "issues": issues or []})
-
-    def _run_detect(self, stdout: str, returncode: int = 1):
+    def _run_detect(self, stdout: str):
         """Patch subprocess.run to return a synthetic Knip result."""
         mock_result = MagicMock()
         mock_result.stdout = stdout
-        mock_result.returncode = returncode
-
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = detect_with_knip(Path("/fake/project"))
-        return result, mock_run
+        with patch("subprocess.run", return_value=mock_result):
+            return detect_with_knip(Path("/fake/project"))
 
     def test_returns_none_when_knip_not_installed(self):
         with patch("subprocess.run", side_effect=FileNotFoundError("npx not found")):
@@ -45,105 +39,76 @@ class TestKnipAdapter:
             assert detect_with_knip(Path("/fake/project")) is None
 
     def test_returns_none_on_empty_output(self):
-        result, _ = self._run_detect(stdout="")
-        assert result is None
+        assert self._run_detect(stdout="") is None
 
     def test_returns_none_on_invalid_json(self):
-        result, _ = self._run_detect(stdout="not-json")
-        assert result is None
+        assert self._run_detect(stdout="not-json") is None
 
-    def test_empty_knip_output_returns_empty_lists(self):
-        payload = self._make_knip_json()
-        result, _ = self._run_detect(stdout=payload)
-        assert result is not None
-        exports_entries, orphaned_entries = result
-        assert exports_entries == []
-        assert orphaned_entries == []
-
-    def test_parses_orphaned_files(self, tmp_path):
-        # Create a real file so _normalize_path can find it within the path
-        f = tmp_path / "dead.ts"
-        f.write_text("// dead")
-        payload = json.dumps({"files": [str(f)], "issues": []})
-        mock_result = MagicMock()
-        mock_result.stdout = payload
-
-        with patch("subprocess.run", return_value=mock_result):
-            result = detect_with_knip(tmp_path)
-
-        assert result is not None
-        _, orphaned = result
-        assert len(orphaned) == 1
-        assert orphaned[0]["importers"] == []
+    def test_empty_knip_output_returns_empty_list(self):
+        result = self._run_detect(stdout=json.dumps({"issues": []}))
+        assert result == []
 
     def test_parses_dead_exports(self, tmp_path):
         f = tmp_path / "utils.ts"
         f.write_text("export function unused() {}")
         payload = json.dumps(
             {
-                "files": [],
                 "issues": [
                     {
                         "file": str(f),
                         "exports": [
-                            {
-                                "name": "unused",
-                                "pos": {"start": {"line": 1, "col": 0}},
-                            }
+                            {"name": "unused", "pos": {"start": {"line": 1, "col": 0}}}
                         ],
                     }
-                ],
+                ]
             }
         )
         mock_result = MagicMock()
         mock_result.stdout = payload
-
         with patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
-
         assert result is not None
-        exports, _ = result
-        assert len(exports) == 1
-        assert exports[0]["name"] == "unused"
-        assert exports[0]["kind"] == "export"
-        assert exports[0]["line"] == 1
+        assert len(result) == 1
+        assert result[0]["name"] == "unused"
+        assert result[0]["kind"] == "export"
+        assert result[0]["line"] == 1
 
     def test_parses_dead_type_exports(self, tmp_path):
         f = tmp_path / "types.ts"
         f.write_text("export type MyType = string;")
         payload = json.dumps(
             {
-                "files": [],
                 "issues": [
                     {
                         "file": str(f),
                         "types": [{"name": "MyType", "pos": {"start": {"line": 2, "col": 0}}}],
                     }
-                ],
+                ]
             }
         )
         mock_result = MagicMock()
         mock_result.stdout = payload
-
         with patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
-
         assert result is not None
-        exports, _ = result
-        assert any(e["kind"] == "type" and e["name"] == "MyType" for e in exports)
+        assert any(e["kind"] == "type" and e["name"] == "MyType" for e in result)
 
     def test_skips_files_outside_scan_path(self, tmp_path):
-        """Files not under the scan path should be filtered out."""
-        payload = json.dumps({"files": ["/other/path/file.ts"], "issues": []})
+        payload = json.dumps(
+            {
+                "issues": [
+                    {
+                        "file": "/other/path/file.ts",
+                        "exports": [{"name": "gone", "pos": {"start": {"line": 1, "col": 0}}}],
+                    }
+                ]
+            }
+        )
         mock_result = MagicMock()
         mock_result.stdout = payload
-
         with patch("subprocess.run", return_value=mock_result):
             result = detect_with_knip(tmp_path)
-
-        assert result is not None
-        _, orphaned = result
-        assert orphaned == []
+        assert result == []
 
 
 # ── Ruff smells adapter ──────────────────────────────────────────────────────

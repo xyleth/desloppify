@@ -22,7 +22,6 @@ from desloppify.languages.python.detectors.private_imports import (
     detect_private_imports as detect_python_private_imports,
 )
 from desloppify.languages.python.detectors.bandit_adapter import detect_with_bandit
-from desloppify.languages.python.detectors.security import detect_python_security
 from desloppify.languages.python.extractors import extract_py_functions
 from desloppify.languages.python.phases import (
     PY_COMPLEXITY_SIGNALS as PY_COMPLEXITY_SIGNALS,
@@ -123,14 +122,10 @@ def _scan_root_from_files(files: list[str]) -> Path | None:
 @register_lang("python")
 class PythonConfig(LangConfig):
     def detect_lang_security(self, files, zone_map):
-        # Try bandit first (more comprehensive than regex/AST fallback).
         scan_root = _scan_root_from_files(files)
-        if scan_root is not None:
-            bandit_result = detect_with_bandit(scan_root, zone_map)
-            if bandit_result is not None:
-                return bandit_result
-        # Fall back to built-in regex/AST security checks.
-        return detect_python_security(files, zone_map)
+        if scan_root is None:
+            return [], 0
+        return detect_with_bandit(scan_root, zone_map) or ([], 0)
 
     def detect_private_imports(self, graph, zone_map):
         return detect_python_private_imports(graph, zone_map)

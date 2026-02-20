@@ -46,7 +46,6 @@ from desloppify.languages.typescript.detectors import props as props_detector_mo
 from desloppify.languages.typescript.detectors import react as react_detector_mod
 from desloppify.languages.typescript.detectors import smells as smells_detector_mod
 from desloppify.languages.typescript.detectors import unused as unused_detector_mod
-from desloppify.languages.typescript.detectors.knip_adapter import detect_with_knip
 from desloppify.languages.typescript.extractors_components import (
     detect_passthrough_components,
     extract_ts_components,
@@ -169,29 +168,6 @@ def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, i
 
 
 def _phase_exports(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
-    # Try Knip first — it understands re-exports, dynamic imports, and barrel files.
-    knip_result = detect_with_knip(path)
-    if knip_result is not None:
-        export_entries, _orphaned = knip_result
-        # Store orphaned for reuse in _phase_coupling (avoid running Knip twice).
-        lang._knip_orphaned = _orphaned  # type: ignore[attr-defined]
-        results = []
-        for e in export_entries:
-            results.append(
-                make_finding(
-                    "exports",
-                    e["file"],
-                    e["name"],
-                    tier=2,
-                    confidence="high",
-                    summary=f"Dead export: {e['name']}",
-                    detail={"line": e.get("line"), "kind": e.get("kind"), "source": "knip"},
-                )
-            )
-        log(f"         knip: {len(export_entries)} instances → {len(results)} findings")
-        return results, {"exports": len(export_entries)}
-
-    # Fall back to grep-based detection (no Knip installed or scan outside a node project).
     export_entries, total_exports = exports_detector_mod.detect_dead_exports(path)
     results = []
     for e in export_entries:
@@ -501,29 +477,19 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     cycle_entries, _ = graph_detector_mod.detect_cycles(graph)
     cycle_entries = filter_entries(zm, cycle_entries, "cycles", file_key="files")
     results.extend(make_cycle_findings(cycle_entries, log))
-
-    # Use Knip orphaned results if _phase_exports already ran Knip (avoids double invocation).
-    knip_orphaned = getattr(lang, "_knip_orphaned", None)
-    if knip_orphaned is not None:
-        orphan_entries = filter_entries(zm, knip_orphaned, "orphaned")
-        total_graph_files = len(graph)
-        results.extend(make_orphaned_findings(orphan_entries, log))
-        if knip_orphaned:
-            log(f"         knip orphaned: {len(knip_orphaned)} files")
-    else:
-        orphan_entries, total_graph_files = orphaned_detector_mod.detect_orphaned_files(
-            path,
-            graph,
-            extensions=lang.extensions,
-            options=orphaned_detector_mod.OrphanedDetectionOptions(
-                extra_entry_patterns=lang.entry_patterns,
-                extra_barrel_names=lang.barrel_names,
-                dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
-                alias_resolver=deps_detector_mod.ts_alias_resolver,
-            ),
-        )
-        orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
-        results.extend(make_orphaned_findings(orphan_entries, log))
+    orphan_entries, total_graph_files = orphaned_detector_mod.detect_orphaned_files(
+        path,
+        graph,
+        extensions=lang.extensions,
+        options=orphaned_detector_mod.OrphanedDetectionOptions(
+            extra_entry_patterns=lang.entry_patterns,
+            extra_barrel_names=lang.barrel_names,
+            dynamic_import_finder=deps_detector_mod.build_dynamic_import_targets,
+            alias_resolver=deps_detector_mod.ts_alias_resolver,
+        ),
+    )
+    orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
+    results.extend(make_orphaned_findings(orphan_entries, log))
 
     # Re-export facades (shared detector)
     facade_entries, _ = facade_detector_mod.detect_reexport_facades(graph)

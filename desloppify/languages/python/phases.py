@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify import state as state_mod
+from desloppify.state import Finding
 from desloppify.engine.detectors import complexity as complexity_detector_mod
 from desloppify.engine.detectors import flat_dirs as flat_dirs_detector_mod
 from desloppify.engine.detectors import gods as gods_detector_mod
@@ -14,12 +15,12 @@ from desloppify.engine.detectors import orphaned as orphaned_detector_mod
 from desloppify.engine.detectors import single_use as single_use_detector_mod
 from desloppify.engine.detectors.base import ComplexitySignal, GodRule
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base.structural import (
+from desloppify.languages._framework.base.structural import (
     add_structural_signal,
     merge_structural_signals,
 )
-from desloppify.languages.framework.base.types import LangConfig
-from desloppify.languages.framework.finding_factories import (
+from desloppify.languages._framework.runtime import LangRun
+from desloppify.languages._framework.finding_factories import (
     make_cycle_findings,
     make_facade_findings,
     make_orphaned_findings,
@@ -126,7 +127,7 @@ PY_ENTRY_PATTERNS = [
 ]
 
 
-def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_unused(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     entries, total_files = unused_detector_mod.detect_unused(path)
     return make_unused_findings(entries, log), {
         "unused": adjust_potential(lang.zone_map, total_files),
@@ -134,8 +135,8 @@ def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, i
 
 
 def _phase_structural(
-    path: Path, lang: LangConfig
-) -> tuple[list[dict], dict[str, int]]:
+    path: Path, lang: LangRun
+) -> tuple[list[Finding], dict[str, int]]:
     """Merge large + complexity + god classes into structural findings."""
     structural: dict[str, dict] = {}
 
@@ -203,7 +204,7 @@ def _phase_structural(
     return results, potentials
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_coupling(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     graph = deps_detector_mod.build_dep_graph(path)
     lang.dep_graph = graph
     zm = lang.zone_map
@@ -229,6 +230,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
         options=orphaned_detector_mod.OrphanedDetectionOptions(
             extra_entry_patterns=lang.entry_patterns,
             extra_barrel_names=lang.barrel_names,
+            dynamic_import_finder=deps_detector_mod.find_python_dynamic_imports,
         ),
     )
     orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
@@ -281,8 +283,8 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
 
 
 def _phase_responsibility_cohesion(
-    path: Path, lang: LangConfig
-) -> tuple[list[dict], dict[str, int]]:
+    path: Path, lang: LangRun
+) -> tuple[list[Finding], dict[str, int]]:
     entries, candidates = cohesion_detector_mod.detect_responsibility_cohesion(path)
     entries = filter_entries(lang.zone_map, entries, "responsibility_cohesion")
 

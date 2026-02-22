@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+import sys
+
+from desloppify import state as state_mod
+from desloppify.app.commands.helpers.query import write_query
+from desloppify.app.commands.review import import_helpers as import_helpers_mod
+from desloppify.app.commands.review import output as review_output_mod
+from desloppify.intelligence import narrative as narrative_mod
+from desloppify.intelligence import review as review_mod
 from desloppify.intelligence.narrative.core import NarrativeContext
+from desloppify.utils import colorize
 
 
 def subjective_at_target_dimensions(
@@ -40,55 +49,76 @@ def do_import(
     import_file,
     state,
     lang,
-    sp,
+    state_file,
     *,
-    holistic: bool,
-    config: dict | None,
-    load_import_findings_data_fn,
-    import_holistic_findings_fn,
-    save_state_fn,
-    compute_narrative_fn,
-    print_skipped_validation_details_fn,
-    print_assessments_summary_fn,
-    print_open_review_summary_fn,
-    print_review_import_scores_and_integrity_fn,
-    write_query_fn,
-    colorize_fn,
-    log_fn,
+    config: dict | None = None,
+    assessment_override: bool = False,
+    assessment_note: str | None = None,
 ) -> None:
     """Import mode: ingest agent-produced findings."""
-    findings_data = load_import_findings_data_fn(import_file)
+    if assessment_override and (
+        not isinstance(assessment_note, str) or not assessment_note.strip()
+    ):
+        print(
+            colorize(
+                "  Error: --assessment-override requires --assessment-note",
+                "red",
+            ),
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    if not holistic:
-        log_fn("  Per-file review mode is deprecated; importing as holistic review data.")
-    diff = import_holistic_findings_fn(findings_data, state, lang.name)
+    findings_data = import_helpers_mod.load_import_findings_data(
+        import_file,
+        colorize_fn=colorize,
+        assessment_override=assessment_override,
+        assessment_note=assessment_note,
+    )
+
+    diff = review_mod.import_holistic_findings(findings_data, state, lang.name)
     label = "Holistic review"
 
-    save_state_fn(state, sp)
+    if assessment_override:
+        audit = state.setdefault("assessment_import_audit", [])
+        audit.append(
+            {
+                "timestamp": state_mod.utc_now(),
+                "override_used": True,
+                "note": (assessment_note or "").strip(),
+                "import_file": str(import_file),
+            }
+        )
+    state_mod.save_state(state, state_file)
 
     lang_name = lang.name
-    narrative = compute_narrative_fn(state, NarrativeContext(lang=lang_name, command="review"))
+    narrative = narrative_mod.compute_narrative(
+        state, NarrativeContext(lang=lang_name, command="review")
+    )
 
-    print(colorize_fn(f"\n  {label} imported:", "bold"))
+    print(colorize(f"\n  {label} imported:", "bold"))
     print(
-        colorize_fn(
+        colorize(
             f"  +{diff['new']} new findings, "
             f"{diff['auto_resolved']} resolved, "
             f"{diff['reopened']} reopened",
             "dim",
         )
     )
-    print_skipped_validation_details_fn(diff)
-    print_assessments_summary_fn(state)
-    next_command = print_open_review_summary_fn(state)
-    at_target = print_review_import_scores_and_integrity_fn(state, config or {})
+    import_helpers_mod.print_skipped_validation_details(diff, colorize_fn=colorize)
+    import_helpers_mod.print_assessments_summary(state, colorize_fn=colorize)
+    next_command = import_helpers_mod.print_open_review_summary(
+        state, colorize_fn=colorize
+    )
+    at_target = review_output_mod._print_review_import_scores_and_integrity(
+        state, config or {}
+    )
 
     print(
-        colorize_fn(
+        colorize(
             f"  Next command to improve subjective scores: `{next_command}`", "dim"
         )
     )
-    write_query_fn(
+    write_query(
         {
             "command": "review",
             "action": "import",

@@ -62,36 +62,47 @@ def _print_score_movement(
     prev_strict: float | None,
     prev_verified: float | None,
     state: dict,
+    has_review_findings: bool = False,
 ) -> None:
-    new_overall = state_mod.get_overall_score(state)
-    new_objective = state_mod.get_objective_score(state)
-    new_strict = state_mod.get_strict_score(state)
-    new_verified = state_mod.get_verified_strict_score(state)
+    new = state_mod.score_snapshot(state)
     if (
-        new_overall is None
-        or new_objective is None
-        or new_strict is None
-        or new_verified is None
+        new.overall is None
+        or new.objective is None
+        or new.strict is None
+        or new.verified is None
     ):
         print(colorize("\n  Scores unavailable — run `desloppify scan`.", "yellow"))
         return
 
-    overall_delta = new_overall - (prev_overall or 0)
-    objective_delta = new_objective - (prev_objective or 0)
-    strict_delta = new_strict - (prev_strict or 0)
-    verified_delta = new_verified - (prev_verified or 0)
+    overall_delta = new.overall - (prev_overall or 0)
+    objective_delta = new.objective - (prev_objective or 0)
+    strict_delta = new.strict - (prev_strict or 0)
+    verified_delta = new.verified - (prev_verified or 0)
     print(
-        f"\n  Scores: overall {new_overall:.1f}/100{_delta_suffix(overall_delta)}"
+        f"\n  Scores: overall {new.overall:.1f}/100{_delta_suffix(overall_delta)}"
         + colorize(
-            f"  objective {new_objective:.1f}/100{_delta_suffix(objective_delta)}",
+            f"  objective {new.objective:.1f}/100{_delta_suffix(objective_delta)}",
             "dim",
         )
-        + colorize(f"  strict {new_strict:.1f}/100{_delta_suffix(strict_delta)}", "dim")
+        + colorize(f"  strict {new.strict:.1f}/100{_delta_suffix(strict_delta)}", "dim")
         + colorize(
-            f"  verified {new_verified:.1f}/100{_delta_suffix(verified_delta)}", "dim"
+            f"  verified {new.verified:.1f}/100{_delta_suffix(verified_delta)}", "dim"
         )
     )
-    if status == "fixed":
+    if has_review_findings and abs(overall_delta) < 0.05:
+        print(
+            colorize(
+                "  Scores unchanged (review findings don't affect scores directly).",
+                "yellow",
+            )
+        )
+        print(
+            colorize(
+                "  Run `desloppify review --prepare` to get updated assessment scores.",
+                "dim",
+            )
+        )
+    elif status == "fixed":
         print(
             colorize(
                 "  Verified score updates after a scan confirms the finding disappeared.",
@@ -112,14 +123,10 @@ def _print_subjective_reset_hint(
         state["findings"].get(fid, {}).get("detector") == "review"
         for fid in all_resolved
     )
-    if (
-        args.status != "fixed"
-        or not has_review
-        or not state.get("subjective_assessments")
-    ):
+    if not has_review or not state.get("subjective_assessments"):
         return
 
-    reset_dims = sorted(
+    stale_dims = sorted(
         dim
         for dim in {
             str(
@@ -128,26 +135,24 @@ def _print_subjective_reset_hint(
             for fid in all_resolved
             if state["findings"].get(fid, {}).get("detector") == "review"
         }
-        if dim
-        and prev_subjective_scores.get(dim, 0.0) > 0.0
-        and assessment_score_fn((state.get("subjective_assessments") or {}).get(dim))
-        <= 0.0
+        if dim and dim in (state.get("subjective_assessments") or {})
     )
-    if not reset_dims:
+    if not stale_dims:
         return
 
-    shown = ", ".join(reset_dims[:3])
-    if len(reset_dims) > 3:
-        shown = f"{shown}, +{len(reset_dims) - 3} more"
+    shown = ", ".join(stale_dims[:3])
+    if len(stale_dims) > 3:
+        shown = f"{shown}, +{len(stale_dims) - 3} more"
     print(
         colorize(
-            f"  Reset subjective score(s) to 0 pending re-review: {shown}", "yellow"
+            f"  Subjective scores unchanged — re-run review for updated scores: {shown}",
+            "yellow",
         )
     )
     print(
         colorize(
             "  Next subjective step: "
-            + f"`desloppify review --prepare --dimensions {','.join(reset_dims)}`",
+            + f"`desloppify review --prepare --dimensions {','.join(stale_dims)}`",
             "dim",
         )
     )

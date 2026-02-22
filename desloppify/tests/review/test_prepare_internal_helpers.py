@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from desloppify.intelligence.review.prepare_internal.helpers import (
+from desloppify.intelligence.review._prepare.helpers import (
     HOLISTIC_WORKFLOW,
     append_full_sweep_batch,
 )

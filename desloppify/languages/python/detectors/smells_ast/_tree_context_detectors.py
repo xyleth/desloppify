@@ -27,15 +27,15 @@ _CALLBACK_LOG_NAMES = {
 def _detect_callback_logging(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag functions that accept a logging callback parameter.
 
     Detects parameters matching common logging-callback names (dprint, log_func, etc.)
     that are actually called with string arguments in the function body.
     """
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         # Check each parameter name
         for arg in node.args.args + node.args.kwonlyargs:
@@ -54,22 +54,22 @@ def _detect_callback_logging(
                     call_count += 1
 
             if call_count >= 1:
-                smell_counts["callback_logging"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
                         "content": f"{node.name}({name}=...) — called {call_count} time(s)",
                     }
                 )
+    return results
 
 
 def _detect_hardcoded_path_sep(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag .split('/') on path-like variables, and os.path.join mixed with '/'.
 
     Detects two patterns:
@@ -77,6 +77,7 @@ def _detect_hardcoded_path_sep(
     2. f-strings or concatenation building paths with hardcoded '/' separators
        on variables with path-like names
     """
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, ast.Call):
         # Pattern 1: var.split("/") where var looks like a path
         if (
@@ -100,7 +101,7 @@ def _detect_hardcoded_path_sep(
                     "relpath",
                     "relative_to",
                 ):
-                    smell_counts["hardcoded_path_sep"].append(
+                    results.append(
                         {
                             "file": filepath,
                             "line": node.lineno,
@@ -110,7 +111,7 @@ def _detect_hardcoded_path_sep(
                     continue
 
             if var_name and _looks_like_path_var(var_name):
-                smell_counts["hardcoded_path_sep"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
@@ -137,10 +138,11 @@ def _detect_hardcoded_path_sep(
             elif isinstance(obj, ast.Attribute):
                 var_name = obj.attr
             if var_name and _looks_like_path_var(var_name):
-                smell_counts["hardcoded_path_sep"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
                         "content": f'{var_name}.startswith("{node.args[0].value}")',
                     }
                 )
+    return results

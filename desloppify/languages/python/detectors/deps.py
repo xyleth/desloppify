@@ -230,6 +230,46 @@ def _resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
     return _try_resolve_path(target_base)
 
 
+def find_python_dynamic_imports(path: Path, extensions: list[str]) -> set[str]:
+    """Find module specifiers referenced by importlib.import_module() calls.
+
+    Returns resolved file paths for string-literal arguments to
+    importlib.import_module(), enabling the orphaned detector to
+    recognize dynamically-loaded modules as live.
+    """
+    del extensions  # Python always uses .py
+    targets: set[str] = set()
+    for py_file in path.rglob("*.py"):
+        try:
+            tree = ast.parse(py_file.read_text())
+        except (SyntaxError, UnicodeDecodeError, OSError) as exc:
+            logger.debug("Skipping unreadable file %s in dynamic import scan: %s", py_file, exc)
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "import_module"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "importlib"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                spec = node.args[0].value
+                # Resolve the module specifier to a file path
+                resolved = _resolve_absolute_import(spec, path)
+                if resolved:
+                    targets.add(resolved)
+                else:
+                    # Fall back to the raw specifier so _is_dynamically_imported
+                    # can still do substring matching
+                    targets.add(spec)
+    return targets
+
+
 def _try_resolve_path(target_base: Path) -> str | None:
     """Try to resolve a module base path to an actual file."""
     # foo.py

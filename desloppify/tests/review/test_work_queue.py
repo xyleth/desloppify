@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from desloppify.engine.work_queue_internal.core import (
+from desloppify.engine._work_queue.core import (
     QueueBuildOptions,
 )
-from desloppify.engine.work_queue_internal.core import (
+from desloppify.engine._work_queue.core import (
     build_work_queue as _build_work_queue,
 )
 
@@ -244,7 +244,7 @@ def test_unassessed_subjective_item_points_to_holistic_refresh():
         item for item in queue["items"] if item["kind"] == "subjective_dimension"
     )
     assert subj["id"] == "subjective::high_level_elegance"
-    assert subj["primary_command"] == "desloppify review --prepare --holistic --refresh"
+    assert subj["primary_command"] == "desloppify review --prepare"
 
 
 def test_subjective_review_finding_points_to_review_triage():
@@ -273,4 +273,4 @@ def test_holistic_subjective_review_finding_points_to_holistic_refresh():
 
     queue = build_work_queue(state, count=None, include_subjective=False)
     item = queue["items"][0]
-    assert item["primary_command"] == "desloppify review --prepare --holistic --refresh"
+    assert item["primary_command"] == "desloppify review --prepare"

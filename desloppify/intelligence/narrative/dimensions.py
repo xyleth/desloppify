@@ -154,11 +154,11 @@ def _dominant_detector_impact(
 def _finding_in_dimension(finding: dict, dim_name: str, dim_scores: dict) -> bool:
     """Check if a finding's detector belongs to a dimension."""
     scoring_mod = importlib.import_module("desloppify.scoring")
-    det = finding.get("detector", "")
-    if det in STRUCTURAL_MERGE:
-        det = "structural"
+    detector = finding.get("detector", "")
+    if detector in STRUCTURAL_MERGE:
+        detector = "structural"
     for dim in scoring_mod.DIMENSIONS:
-        if dim.name == dim_name and det in dim.detectors:
+        if dim.name == dim_name and detector in dim.detectors:
             return True
     return False
 

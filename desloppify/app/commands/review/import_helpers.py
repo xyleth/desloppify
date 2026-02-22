@@ -7,19 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-def _coerce_assessment_score(value: object) -> float | None:
-    """Return normalized 0-100 assessment score or None when unavailable."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return round(max(0.0, min(100.0, float(value))), 1)
-    if isinstance(value, dict):
-        raw = value.get("score")
-        if isinstance(raw, bool) or not isinstance(raw, int | float):
-            return None
-        return round(max(0.0, min(100.0, float(raw))), 1)
-    return None
+from desloppify.state import coerce_assessment_score
 
 
 def _feedback_dimensions_from_findings(findings: object) -> set[str]:
@@ -50,12 +38,55 @@ def _validate_assessment_feedback(findings_data: dict[str, Any]) -> list[str]:
     for dim_name, payload in assessments.items():
         if not isinstance(dim_name, str) or not dim_name.strip():
             continue
-        score = _coerce_assessment_score(payload)
+        score = coerce_assessment_score(payload)
         if score is None or score >= 100.0:
             continue
         if dim_name not in feedback_dims:
             missing.append(f"{dim_name} ({score:.1f})")
     return sorted(missing)
+
+
+def _parse_and_validate_import(
+    import_file: str,
+    *,
+    assessment_override: bool = False,
+    assessment_note: str | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Parse and validate a review import file (pure function).
+
+    Returns ``(data, errors)`` where *data* is the normalized payload on
+    success, or ``None`` when errors prevent import.
+    """
+    findings_path = Path(import_file)
+    if not findings_path.exists():
+        return None, [f"file not found: {import_file}"]
+    try:
+        findings_data = json.loads(findings_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return None, [f"error reading findings: {exc}"]
+
+    if isinstance(findings_data, list):
+        return {"findings": findings_data}, []
+
+    if not isinstance(findings_data, dict):
+        return None, ["findings file must contain a JSON array or object"]
+
+    if "findings" not in findings_data:
+        return None, ["findings object must contain a 'findings' key"]
+
+    missing_feedback = _validate_assessment_feedback(findings_data)
+    if missing_feedback:
+        if assessment_override:
+            if not isinstance(assessment_note, str) or not assessment_note.strip():
+                return None, ["--assessment-override requires --assessment-note"]
+            return findings_data, []
+        return None, [
+            "assessments below 100 must include explicit feedback "
+            "(finding with same dimension and non-empty suggestion). "
+            f"Missing: {', '.join(missing_feedback)}"
+        ]
+
+    return findings_data, []
 
 
 def load_import_findings_data(
@@ -65,56 +96,22 @@ def load_import_findings_data(
     assessment_override: bool = False,
     assessment_note: str | None = None,
 ) -> dict[str, Any]:
-    """Load and normalize review import payload to object format."""
-    findings_path = Path(import_file)
-    if not findings_path.exists():
-        print(colorize_fn(f"  Error: file not found: {import_file}", "red"), file=sys.stderr)
-        sys.exit(1)
-    try:
-        findings_data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        print(colorize_fn(f"  Error reading findings: {exc}", "red"), file=sys.stderr)
-        sys.exit(1)
+    """Load and normalize review import payload to object format.
 
-    if isinstance(findings_data, dict):
-        if "findings" in findings_data:
-            missing_feedback = _validate_assessment_feedback(findings_data)
-            if missing_feedback:
-                if assessment_override:
-                    if not isinstance(assessment_note, str) or not assessment_note.strip():
-                        print(
-                            colorize_fn(
-                                "  Error: --assessment-override requires --assessment-note",
-                                "red",
-                            ),
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)
-                    return findings_data
-                print(
-                    colorize_fn(
-                        "  Error: assessments below 100 must include explicit feedback "
-                        "(finding with same dimension and non-empty suggestion). "
-                        f"Missing: {', '.join(missing_feedback)}",
-                        "red",
-                    ),
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            return findings_data
-        print(
-            colorize_fn("  Error: findings object must contain a 'findings' key", "red"),
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    if isinstance(findings_data, list):
-        return {"findings": findings_data}
-
-    print(
-        colorize_fn("  Error: findings file must contain a JSON array or object", "red"),
-        file=sys.stderr,
+    CLI wrapper over ``_parse_and_validate_import`` that prints errors
+    and calls ``sys.exit(1)`` on failure.
+    """
+    data, errors = _parse_and_validate_import(
+        import_file,
+        assessment_override=assessment_override,
+        assessment_note=assessment_note,
     )
-    sys.exit(1)
+    if errors:
+        for err in errors:
+            print(colorize_fn(f"  Error: {err}", "red"), file=sys.stderr)
+        sys.exit(1)
+    assert data is not None  # guaranteed when errors is empty
+    return data
 
 
 def print_skipped_validation_details(diff: dict[str, Any], *, colorize_fn) -> None:
@@ -186,14 +183,12 @@ def print_review_import_scores_and_integrity(
     colorize_fn,
 ) -> list[dict[str, Any]]:
     """Print score snapshot plus subjective integrity warnings."""
-    overall = state_mod.get_overall_score(state)
-    objective = state_mod.get_objective_score(state)
-    strict = state_mod.get_strict_score(state)
-    if overall is not None and objective is not None and strict is not None:
+    scores = state_mod.score_snapshot(state)
+    if scores.overall is not None and scores.objective is not None and scores.strict is not None:
         print(
             colorize_fn(
-                f"\n  Current scores: overall {overall:.1f}/100 · "
-                f"objective {objective:.1f}/100 · strict {strict:.1f}/100",
+                f"\n  Current scores: overall {scores.overall:.1f}/100 · "
+                f"objective {scores.objective:.1f}/100 · strict {scores.strict:.1f}/100",
                 "dim",
             )
         )

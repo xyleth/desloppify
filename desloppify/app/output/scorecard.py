@@ -34,7 +34,6 @@ from desloppify.app.output.scorecard_parts.theme import (
     scale,
     score_color,
 )
-from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.utils import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)

@@ -24,38 +24,12 @@ def _is_test_path(filepath: str) -> bool:
     return normalized.startswith("tests/") or "/tests/" in normalized
 
 
-def _smell(id: str, label: str, severity: str, pattern: str | None = None) -> dict:
-    return {"id": id, "label": label, "pattern": pattern, "severity": severity}
+def _smell(smell_id: str, label: str, severity: str, pattern: str | None = None) -> dict:
+    return {"id": smell_id, "label": label, "pattern": pattern, "severity": severity}
 
 
 SMELL_CHECKS = [
     # Regex-based detectors
-    _smell(
-        "bare_except",
-        "Bare except clause (catches everything including SystemExit)",
-        "high",
-        r"^\s*except\s*:",
-    ),
-    _smell(
-        "broad_except",
-        "Broad except — check library exceptions before narrowing",
-        "medium",
-        r"^\s*except\s+(?:Exception|BaseException)\s*(?:as\s+\w+\s*)?:",
-    ),
-    _smell(
-        "mutable_default",
-        "Mutable default argument (list/dict/set literal)",
-        "high",
-        r"def\s+\w+\([^)]*=\s*(?:\[\]|\{\}|set\(\))",
-    ),
-    _smell("global_keyword", "Global keyword usage", "medium", r"^\s+global\s+\w+"),
-    _smell(
-        "star_import",
-        "Star import (from X import *)",
-        "medium",
-        r"^from\s+\S+\s+import\s+\*",
-    ),
-    _smell("type_ignore", "type: ignore comment", "medium", r"#\s*type:\s*ignore"),
     _smell(
         "eval_exec", "eval()/exec() usage", "high", r"(?<!\.)(?<!\w)(?:eval|exec)\s*\("
     ),
@@ -109,11 +83,6 @@ SMELL_CHECKS = [
         "high",
     ),
     _smell(
-        "mutable_class_var",
-        "Class-level mutable default (shared across instances)",
-        "high",
-    ),
-    _smell(
         "lru_cache_mutable",
         "lru_cache on function that reads mutable global state",
         "medium",
@@ -151,10 +120,6 @@ SMELL_CHECKS = [
         "hardcoded_path_sep",
         "Hardcoded '/' path separator (breaks on Windows)",
         "medium",
-    ),
-    # #48: lost exception context
-    _smell(
-        "lost_exception_context", "Raise without 'from' loses exception chain", "high"
     ),
     # #49: vestigial parameter, noop function, stderr traceback
     _smell(

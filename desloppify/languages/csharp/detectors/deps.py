@@ -22,7 +22,7 @@ from desloppify.languages.csharp.extractors import (
     CSHARP_FILE_EXCLUSIONS,
     find_csharp_files,
 )
-from desloppify.utils import c, print_table, rel, resolve_path
+from desloppify.utils import colorize, print_table, rel, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -527,7 +527,7 @@ def cmd_deps(args: argparse.Namespace) -> None:
         if getattr(args, "json", False):
             print(json.dumps({"file": rel(args.file), **coupling}, indent=2))
             return
-        print(c(f"\nDependency info: {rel(args.file)}\n", "bold"))
+        print(colorize(f"\nDependency info: {rel(args.file)}\n", "bold"))
         print(f"  Fan-in (importers):  {coupling['fan_in']}")
         print(f"  Fan-out (imports):   {coupling['fan_out']}")
         print(f"  Instability:         {coupling['instability']}")
@@ -556,7 +556,7 @@ def cmd_deps(args: argparse.Namespace) -> None:
         )
         return
 
-    print(c(f"\nC# dependency graph: {len(graph)} files\n", "bold"))
+    print(colorize(f"\nC# dependency graph: {len(graph)} files\n", "bold"))
     rows = []
     for filepath, entry in by_importers[: getattr(args, "top", 20)]:
         rows.append(
@@ -593,10 +593,10 @@ def cmd_cycles(args: argparse.Namespace) -> None:
         return
 
     if not cycles:
-        print(c("No import cycles found.", "green"))
+        print(colorize("No import cycles found.", "green"))
         return
 
-    print(c(f"\nImport cycles: {len(cycles)}\n", "bold"))
+    print(colorize(f"\nImport cycles: {len(cycles)}\n", "bold"))
     for cy in cycles[: getattr(args, "top", 20)]:
         files = [rel(f) for f in cy["files"]]
         print(

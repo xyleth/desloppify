@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from desloppify.languages.framework.policy import REQUIRED_DIRS, REQUIRED_FILES
-from desloppify.languages.framework.structure_validation import validate_lang_structure
+from desloppify.languages._framework.policy import REQUIRED_DIRS, REQUIRED_FILES
+from desloppify.languages._framework.structure_validation import validate_lang_structure
 
 
 def _write_layout(root: Path) -> None:

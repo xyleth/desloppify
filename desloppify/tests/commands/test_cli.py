@@ -667,7 +667,7 @@ class TestResolveLang:
         )
 
         args = SimpleNamespace(path=str(target_src))
-        resolved = lang_helpers_mod._resolve_detection_root(args)
+        resolved = lang_helpers_mod.resolve_detection_root(args)
         assert resolved == target_root
 
 

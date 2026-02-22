@@ -8,6 +8,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from desloppify.state import Finding
 from desloppify.engine.detectors import complexity as complexity_detector_mod
 from desloppify.engine.detectors import coupling as coupling_detector_mod
 from desloppify.engine.detectors import flat_dirs as flat_dirs_detector_mod
@@ -20,12 +21,12 @@ from desloppify.engine.detectors import signature as signature_detector_mod
 from desloppify.engine.detectors import single_use as single_use_detector_mod
 from desloppify.engine.detectors.base import ComplexitySignal, GodRule
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages.framework.base.structural import (
+from desloppify.languages._framework.base.structural import (
     add_structural_signal,
     merge_structural_signals,
 )
-from desloppify.languages.framework.base.types import LangConfig
-from desloppify.languages.framework.finding_factories import (
+from desloppify.languages._framework.runtime import LangRun
+from desloppify.languages._framework.finding_factories import (
     make_cycle_findings,
     make_facade_findings,
     make_orphaned_findings,
@@ -133,7 +134,7 @@ TS_SKIP_DIRS = {"src/shared/components/ui"}
 # ── Phase runners ──────────────────────────────────────────
 
 
-def _phase_logs(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_logs(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     log_result = logs_detector_mod.detect_logs_result(path)
     log_entries = log_result.entries
     total_files = log_result.population_size
@@ -160,14 +161,14 @@ def _phase_logs(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int
     return results, {"logs": adjust_potential(lang.zone_map, total_files)}
 
 
-def _phase_unused(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_unused(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     entries, total_files = unused_detector_mod.detect_unused(path)
     return make_unused_findings(entries, log), {
         "unused": adjust_potential(lang.zone_map, total_files),
     }
 
 
-def _phase_exports(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_exports(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     export_entries, total_exports = exports_detector_mod.detect_dead_exports(path)
     results = []
     for e in export_entries:
@@ -187,8 +188,8 @@ def _phase_exports(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, 
 
 
 def _phase_deprecated(
-    path: Path, lang: LangConfig
-) -> tuple[list[dict], dict[str, int]]:
+    path: Path, lang: LangRun
+) -> tuple[list[Finding], dict[str, int]]:
     dep_result = deprecated_detector_mod.detect_deprecated_result(path)
     dep_entries = dep_result.entries
     total_deprecated = dep_result.population_size
@@ -216,8 +217,8 @@ def _phase_deprecated(
 
 
 def _phase_structural(
-    path: Path, lang: LangConfig
-) -> tuple[list[dict], dict[str, int]]:
+    path: Path, lang: LangRun
+) -> tuple[list[Finding], dict[str, int]]:
     structural: dict[str, dict] = {}
 
     large_entries, file_count = large_detector_mod.detect_large_files(
@@ -353,7 +354,7 @@ def _make_boundary_findings(
     single_entries: list[dict],
     path: Path,
     graph: dict,
-    lang: LangConfig,
+    lang: LangRun,
     shared_prefix: str,
     tools_prefix: str,
 ) -> tuple[list[dict], int]:
@@ -401,7 +402,7 @@ def _make_boundary_findings(
     return results, total_shared
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_coupling(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     results = []
     graph = deps_detector_mod.build_dep_graph(path)
     lang.dep_graph = graph
@@ -557,7 +558,7 @@ def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str,
     return results, potentials
 
 
-def _phase_smells(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_smells(path: Path, lang: LangRun) -> tuple[list[Finding], dict[str, int]]:
     smell_entries, total_smell_files = smells_detector_mod.detect_smells(path)
     results = make_smell_findings(smell_entries, log)
 

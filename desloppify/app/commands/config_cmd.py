@@ -1,5 +1,10 @@
 """config command: show/set/unset project configuration."""
 
+from __future__ import annotations
+
+import argparse
+import sys
+
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.core.config import (
     CONFIG_SCHEMA,
@@ -7,10 +12,11 @@ from desloppify.core.config import (
     set_config_value,
     unset_config_value,
 )
+from desloppify.core.fallbacks import print_error
 from desloppify.utils import colorize
 
 
-def cmd_config(args):
+def cmd_config(args: argparse.Namespace) -> None:
     """Handle config subcommands: show, set, unset."""
     action = getattr(args, "config_action", None)
     if action == "set":
@@ -55,10 +61,14 @@ def _config_set(args):
     try:
         set_config_value(config, key, value)
     except (KeyError, ValueError) as e:
-        print(colorize(f"  Error: {e}", "red"))
-        return
+        print_error(str(e))
+        sys.exit(1)
 
-    save_config(config)
+    try:
+        save_config(config)
+    except OSError as e:
+        print_error(f"could not save config: {e}")
+        sys.exit(1)
     display = config[key]
     if isinstance(display, int) and key.endswith("_days") and display == 0:
         display = "never (0)"
@@ -73,9 +83,13 @@ def _config_unset(args):
     try:
         unset_config_value(config, key)
     except KeyError as e:
-        print(colorize(f"  Error: {e}", "red"))
-        return
+        print_error(str(e))
+        sys.exit(1)
 
-    save_config(config)
+    try:
+        save_config(config)
+    except OSError as e:
+        print_error(f"could not save config: {e}")
+        sys.exit(1)
     default = CONFIG_SCHEMA[key].default
     print(colorize(f"  Reset {key} to default ({default})", "green"))

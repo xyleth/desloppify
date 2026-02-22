@@ -28,7 +28,7 @@ def resolve_per_file_dimensions(
     Precedence (highest to lowest):
     1) CLI ``--dimensions``
     2) Config ``review_dimensions``
-    3) Global defaults from ``per_file_dimensions.json``
+    3) Global defaults from ``dimensions.json``
     """
     return list(
         _non_empty(cli_dimensions)

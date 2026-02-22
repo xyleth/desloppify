@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.languages.framework.facade_common import detect_reexport_facades_common
+from desloppify.languages._framework.facade_common import detect_reexport_facades_common
 
 
 def test_detect_reexport_facades_common_filters_by_importers_and_shapes_entries():

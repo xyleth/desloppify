@@ -59,15 +59,15 @@ def _resolve_default_path(args) -> None:
         return
     if getattr(args, "command", None) == "review":
         try:
-            sp = state_path(args)
-            if sp:
-                saved = load_state(sp)
+            state_file = state_path(args)
+            if state_file:
+                saved = load_state(state_file)
                 saved_path = saved.get("scan_path")
                 if saved_path:
                     args.path = str((PROJECT_ROOT / saved_path).resolve())
                     return
-        except Exception:
-            pass
+        except (OSError, KeyError, ValueError, TypeError, AttributeError) as exc:
+            logger.debug("Failed to resolve default path from saved state: %s", exc)
     lang = resolve_lang(args)
     if lang:
         args.path = str(PROJECT_ROOT / lang.default_src)
@@ -79,11 +79,11 @@ def _load_shared_runtime(args) -> None:
     """Load config/state and attach shared objects to parsed args."""
     config = load_config()
 
-    sp = state_path(args)
-    state = load_state(sp)
+    state_file = state_path(args)
+    state = load_state(state_file)
     _apply_persisted_exclusions(args, config)
 
-    args.runtime = CommandRuntime(config=config, state=state, state_path=sp)
+    args.runtime = CommandRuntime(config=config, state=state, state_path=state_file)
 
 
 def _resolve_handler(command: str):

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from desloppify.core._internal.text_utils import is_numeric
+
 
 def coerce_target_score(value: object, *, fallback: float = 95.0) -> float:
     """Normalize target score-like values to a safe [0, 100] float."""
-    if isinstance(fallback, bool) or not isinstance(fallback, int | float):
-        fallback_value = 95.0
-    else:
+    if is_numeric(fallback):
         fallback_value = float(fallback)
+    else:
+        fallback_value = 95.0
 
-    if isinstance(value, bool):
-        parsed = fallback_value
-    elif isinstance(value, int | float):
+    if is_numeric(value):
         parsed = float(value)
     elif isinstance(value, str):
         text = value.strip()

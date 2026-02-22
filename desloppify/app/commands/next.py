@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from desloppify import state as state_mod
 from desloppify import utils as utils_mod
 from desloppify.app.commands import next_output as next_output_mod
@@ -14,7 +16,7 @@ from desloppify.app.commands.helpers.state import require_completed_scan
 from desloppify.app.output.scorecard_parts.projection import (
     scorecard_dimensions_payload,
 )
-from desloppify.engine.work_queue_internal.core import (
+from desloppify.engine._work_queue.core import (
     QueueBuildOptions,
     build_work_queue,
 )
@@ -23,25 +25,20 @@ from desloppify.utils import colorize
 
 
 def _scorecard_subjective(
-    state_or_dim_scores: dict,
-    dim_scores: dict | None = None,
+    state: dict,
+    dim_scores: dict,
 ) -> list[dict]:
     """Return scorecard-aligned subjective entries for current dimension scores."""
-    return next_render_mod.scorecard_subjective(state_or_dim_scores, dim_scores)
+    return next_render_mod.scorecard_subjective(state, dim_scores)
 
 
 def _low_subjective_dimensions(
-    state_or_dim_scores: dict,
-    dim_scores: dict | None = None,
+    state: dict,
+    dim_scores: dict,
     *,
     threshold: float = 95.0,
 ) -> list[tuple[str, float, int]]:
     """Return assessed scorecard-subjective entries below the threshold."""
-    if dim_scores is None:
-        dim_scores = state_or_dim_scores
-        state = {"dimension_scores": dim_scores}
-    else:
-        state = state_or_dim_scores
     low: list[tuple[str, float, int]] = []
     for entry in _scorecard_subjective(state, dim_scores):
         if entry.get("placeholder"):
@@ -59,7 +56,7 @@ def _low_subjective_dimensions(
     return low
 
 
-def cmd_next(args) -> None:
+def cmd_next(args: argparse.Namespace) -> None:
     """Show next highest-priority queue items."""
     runtime = command_runtime(args)
     state = runtime.state

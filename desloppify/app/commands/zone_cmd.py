@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from desloppify.app.commands.helpers.lang import resolve_lang
@@ -10,6 +11,7 @@ from desloppify.app.commands.helpers.rendering import print_agent_plan
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core import config as config_mod
+from desloppify.core.fallbacks import print_error
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.utils import colorize, rel
 
@@ -24,19 +26,20 @@ def cmd_zone(args: argparse.Namespace) -> None:
     elif action == "clear":
         _zone_clear(args)
     else:
-        print(colorize("Usage: desloppify zone {show|set|clear}", "red"))
+        print(colorize("Usage: desloppify zone {show|set|clear}", "red"), file=sys.stderr)
+        sys.exit(1)
 
 
 def _zone_show(args):
     """Show zone classifications for all scanned files."""
-    sp = state_path(args)
-    if not sp.exists():
-        print(colorize("No state file found — run a scan first.", "red"))
-        return
+    state_file = state_path(args)
+    if not state_file.exists():
+        print(colorize("No state file found — run a scan first.", "red"), file=sys.stderr)
+        sys.exit(1)
     lang = resolve_lang(args)
     if not lang or not lang.file_finder:
-        print(colorize("No language detected — run a scan first.", "red"))
-        return
+        print(colorize("No language detected — run a scan first.", "red"), file=sys.stderr)
+        sys.exit(1)
 
     path = Path(args.path)
     overrides = command_runtime(args).config.get("zone_overrides", {})
@@ -89,13 +92,18 @@ def _zone_set(args):
             colorize(
                 f"Invalid zone: {zone_value}. Valid: {', '.join(sorted(valid_zones))}",
                 "red",
-            )
+            ),
+            file=sys.stderr,
         )
-        return
+        sys.exit(1)
 
     config = command_runtime(args).config
     config.setdefault("zone_overrides", {})[filepath] = zone_value
-    config_mod.save_config(config)
+    try:
+        config_mod.save_config(config)
+    except OSError as e:
+        print_error(f"could not save config: {e}")
+        sys.exit(1)
     print(f"  Set {filepath} → {zone_value}")
     print(colorize("  Run `desloppify scan` to apply.", "dim"))
     print(colorize("  Next command: `desloppify scan`", "dim"))
@@ -109,7 +117,11 @@ def _zone_clear(args):
     overrides = config.get("zone_overrides", {})
     if filepath in overrides:
         del overrides[filepath]
-        config_mod.save_config(config)
+        try:
+            config_mod.save_config(config)
+        except OSError as e:
+            print_error(f"could not save config: {e}")
+            sys.exit(1)
         print(f"  Cleared override for {filepath}")
         print(colorize("  Run `desloppify scan` to apply.", "dim"))
         print(colorize("  Next command: `desloppify scan`", "dim"))

@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 build/
 dist/
+.mypy_cache/
+.ruff_cache/
 review_output.json
 holistic_findings.json
 holistic_*.json

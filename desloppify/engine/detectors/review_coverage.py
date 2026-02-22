@@ -201,7 +201,7 @@ def detect_holistic_review_staleness(
                 "name": "holistic_unreviewed",
                 "tier": 4,
                 "confidence": "low",
-                "summary": "No holistic codebase review on record — run `desloppify review --prepare --holistic`",
+                "summary": "No holistic codebase review on record — run `desloppify review --prepare`",
                 "detail": {"reason": "unreviewed"},
             }
         ]

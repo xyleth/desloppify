@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from desloppify.engine.state_internal.schema import (
+from desloppify.engine._state.schema import (
     DimensionScore,
     Finding,
     StateModel,

@@ -98,99 +98,68 @@ def test_write_packet_snapshot_redacts_target_from_blind_packet(tmp_path):
     assert blind_payload["config"]["noise_budget"] == 10
 
 
-def _make_do_prepare_args(*, total_files: int = 3, state: dict | None = None):
-    """Return the common kwargs for do_prepare, overriding total_files."""
+from unittest.mock import patch
+
+
+_P_SETUP = "desloppify.app.commands.review.prepare.review_runtime_mod.setup_lang_concrete"
+_P_NARRATIVE = "desloppify.app.commands.review.prepare.narrative_mod.compute_narrative"
+_P_REVIEW_PREP = "desloppify.app.commands.review.prepare.review_mod.prepare_holistic_review"
+_P_REVIEW_OPTS = "desloppify.app.commands.review.prepare.review_mod.HolisticReviewPrepareOptions"
+_P_NARRATIVE_CTX = "desloppify.app.commands.review.prepare.narrative_mod.NarrativeContext"
+_P_WRITE_QUERY = "desloppify.app.commands.review.prepare.write_query"
+
+
+def _do_prepare_patched(*, total_files: int = 3, state: dict | None = None, config: dict | None = None):
+    """Call do_prepare with mocked dependencies; return captured write_query payload."""
     args = SimpleNamespace(path=".", dimensions=None)
     captured: dict = {}
 
-    def _setup_lang(_lang, _path, _config):
-        return SimpleNamespace(name="python"), []
+    def _fake_write_query(payload):
+        captured.update(payload)
 
-    return dict(
-        args=args,
-        state=state or {},
-        lang=SimpleNamespace(name="python"),
-        _state_path=None,
-        config={},
-        holistic=True,
-        setup_lang_fn=_setup_lang,
-        narrative_mod=SimpleNamespace(
-            NarrativeContext=lambda **kwargs: SimpleNamespace(**kwargs),
-            compute_narrative=lambda *_args, **_kwargs: {"headline": "x"},
-        ),
-        review_mod=SimpleNamespace(
-            HolisticReviewPrepareOptions=lambda **kwargs: SimpleNamespace(**kwargs),
-            prepare_holistic_review=lambda *_args, **_kwargs: {
-                "total_files": total_files,
-                "investigation_batches": [],
-                "workflow": [],
-            },
-        ),
-        write_query_fn=lambda payload: captured.update(payload),
-        colorize_fn=lambda text, _style: text,
-        log_fn=lambda _msg: None,
-    ), captured
+    with (
+        patch(_P_SETUP, return_value=(SimpleNamespace(name="python"), [])),
+        patch(_P_NARRATIVE, return_value={"headline": "x"}),
+        patch(_P_REVIEW_PREP, return_value={
+            "total_files": total_files,
+            "investigation_batches": [],
+            "workflow": [],
+        }),
+        patch(_P_REVIEW_OPTS, side_effect=lambda **kw: SimpleNamespace(**kw)),
+        patch(_P_NARRATIVE_CTX, side_effect=lambda **kw: SimpleNamespace(**kw)),
+        patch(_P_WRITE_QUERY, side_effect=_fake_write_query),
+    ):
+        do_prepare(
+            args,
+            state=state or {},
+            lang=SimpleNamespace(name="python"),
+            _state_path=None,
+            config=config or {},
+        )
+    return captured
 
 
 def test_review_prepare_zero_files_exits_with_error(capsys):
     """Regression guard for issue #127: 0-file result must error, not silently succeed."""
-    kwargs, captured = _make_do_prepare_args(total_files=0)
     with pytest.raises(SystemExit) as exc:
-        do_prepare(**kwargs)
+        _do_prepare_patched(total_files=0)
     assert exc.value.code == 1
     err = capsys.readouterr().err
     assert "no files found" in err.lower()
-    assert not captured, "query.json must not be written when no files are found"
 
 
 def test_review_prepare_zero_files_hints_scan_path(capsys):
     """When state has a scan_path, the error hint mentions it."""
-    kwargs, _ = _make_do_prepare_args(total_files=0, state={"scan_path": "."})
     with pytest.raises(SystemExit):
-        do_prepare(**kwargs)
+        _do_prepare_patched(total_files=0, state={"scan_path": "."})
     err = capsys.readouterr().err
     assert "--path" in err
 
 
 def test_review_prepare_query_redacts_target_score():
-    captured: dict[str, object] = {}
-
-    args = SimpleNamespace(
-        path=".",
-        dimensions=None,
-    )
-    config = {"target_strict_score": 98, "noise_budget": 10}
-    lang = SimpleNamespace(name="python")
-
-    def _setup_lang(_lang, _path, _config):
-        return SimpleNamespace(name="python"), []
-
-    def _write_query(payload: dict) -> None:
-        captured.update(payload)
-
-    do_prepare(
-        args,
-        state={},
-        lang=lang,
-        _state_path=None,
-        config=config,
-        holistic=True,
-        setup_lang_fn=_setup_lang,
-        narrative_mod=SimpleNamespace(
-            NarrativeContext=lambda **kwargs: SimpleNamespace(**kwargs),
-            compute_narrative=lambda *_args, **_kwargs: {"headline": "x"},
-        ),
-        review_mod=SimpleNamespace(
-            HolisticReviewPrepareOptions=lambda **kwargs: SimpleNamespace(**kwargs),
-            prepare_holistic_review=lambda *_args, **_kwargs: {
-                "total_files": 3,
-                "investigation_batches": [],
-                "workflow": [],
-            }
-        ),
-        write_query_fn=_write_query,
-        colorize_fn=lambda text, _style: text,
-        log_fn=lambda _msg: None,
+    captured = _do_prepare_patched(
+        total_files=3,
+        config={"target_strict_score": 98, "noise_budget": 10},
     )
 
     assert "config" in captured

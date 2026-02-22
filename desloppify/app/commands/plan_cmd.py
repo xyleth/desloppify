@@ -1,5 +1,9 @@
 """plan command: generate prioritized markdown plan from state."""
 
+from __future__ import annotations
+
+import argparse
+
 from desloppify.app.commands.helpers.rendering import print_agent_plan
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_completed_scan
@@ -7,12 +11,9 @@ from desloppify.core.fallbacks import warn_best_effort
 from desloppify.engine.planning import core as plan_mod
 from desloppify.utils import colorize, safe_write_text
 
-command_context = command_runtime
-
-
-def cmd_plan_output(args) -> None:
+def cmd_plan_output(args: argparse.Namespace) -> None:
     """Generate a prioritized markdown plan from state."""
-    state = command_context(args).state
+    state = command_runtime(args).state
 
     if not require_completed_scan(state):
         return

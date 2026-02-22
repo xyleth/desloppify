@@ -7,8 +7,8 @@ from desloppify.app.commands.helpers.state import state_path
 
 
 def _load_state(args) -> tuple[str, dict]:
-    sp = state_path(args)
-    return sp, state_mod.load_state(sp)
+    state_file = state_path(args)
+    return state_file, state_mod.load_state(state_file)
 
 
 def _save_state(state: dict, state_path_value: str) -> None:

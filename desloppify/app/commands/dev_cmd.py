@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 import keyword
 import re
+import sys
 
 from desloppify.app.commands.dev_scaffold_templates import build_scaffold_files
 from desloppify.utils import PROJECT_ROOT, colorize, safe_write_text
 
 
-def cmd_dev(args) -> None:
+def cmd_dev(args: argparse.Namespace) -> None:
     """Dispatch developer subcommands."""
     action = getattr(args, "dev_action", None)
     if action == "scaffold-lang":
@@ -19,7 +21,11 @@ def cmd_dev(args) -> None:
         except ValueError as ex:
             raise SystemExit(colorize(str(ex), "red")) from ex
         return
-    print(colorize("Unknown dev action. Use `desloppify dev scaffold-lang`.", "red"))
+    print(
+        colorize("Unknown dev action. Use `desloppify dev scaffold-lang`.", "red"),
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _normalize_lang_name(raw: str) -> str:

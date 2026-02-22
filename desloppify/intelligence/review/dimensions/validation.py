@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from desloppify.core._internal.text_utils import is_numeric
+
 _PROMPT_FIELDS = ("description", "look_for", "skip")
 _PROMPT_OPTIONAL_FIELDS = ("meta",)
 _MIN_SYSTEM_PROMPT_LEN = 100
@@ -69,7 +71,7 @@ def validate_prompt_meta(value: object, *, context: str) -> dict[str, object]:
 
     weight = value.get("weight")
     if weight is not None:
-        if isinstance(weight, bool) or not isinstance(weight, int | float):
+        if not is_numeric(weight):
             raise ValueError(f"{context}.weight must be a number")
         if float(weight) < 0:
             raise ValueError(f"{context}.weight must be >= 0")

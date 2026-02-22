@@ -10,10 +10,9 @@ from desloppify.languages.python.detectors.smells_ast._shared import _iter_nodes
 def _detect_optional_param_sprawl(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag functions with too many optional parameters."""
     dataclass_classes: set[str] = set()
     for node in _iter_nodes(tree, all_nodes, ast.ClassDef):
@@ -25,6 +24,7 @@ def _detect_optional_param_sprawl(
             ):
                 dataclass_classes.add(node.name)
 
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if node.name.startswith("test_"):
             continue
@@ -53,7 +53,7 @@ def _detect_optional_param_sprawl(
         total = required + optional
 
         if optional >= 4 and optional > required and total >= 5:
-            smell_counts["optional_param_sprawl"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": node.lineno,
@@ -63,6 +63,7 @@ def _detect_optional_param_sprawl(
                     ),
                 }
             )
+    return results
 
 
 _BARE_TYPES = {"dict", "list", "set", "tuple", "Dict", "List", "Set", "Tuple"}
@@ -71,11 +72,11 @@ _BARE_TYPES = {"dict", "list", "set", "tuple", "Dict", "List", "Set", "Tuple"}
 def _detect_annotation_quality(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag loose type annotations: bare containers, bare Callable, missing returns."""
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if node.name.startswith("_") and not node.name.startswith("__"):
             continue
@@ -85,7 +86,7 @@ def _detect_annotation_quality(
         ret = node.returns
         if ret is not None:
             if isinstance(ret, ast.Name) and ret.id in _BARE_TYPES:
-                smell_counts["annotation_quality"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
@@ -93,7 +94,7 @@ def _detect_annotation_quality(
                     }
                 )
             elif isinstance(ret, ast.Attribute) and ret.attr in _BARE_TYPES:
-                smell_counts["annotation_quality"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
@@ -104,7 +105,7 @@ def _detect_annotation_quality(
             if hasattr(node, "end_lineno") and node.end_lineno:
                 loc = node.end_lineno - node.lineno + 1
                 if loc >= 10:
-                    smell_counts["annotation_quality"].append(
+                    results.append(
                         {
                             "file": filepath,
                             "line": node.lineno,
@@ -120,7 +121,7 @@ def _detect_annotation_quality(
             if ann is None:
                 continue
             if isinstance(ann, ast.Name) and ann.id == "Callable":
-                smell_counts["annotation_quality"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
@@ -131,7 +132,7 @@ def _detect_annotation_quality(
                     }
                 )
             elif isinstance(ann, ast.Attribute) and ann.attr == "Callable":
-                smell_counts["annotation_quality"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": node.lineno,
@@ -141,3 +142,4 @@ def _detect_annotation_quality(
                         ),
                     }
                 )
+    return results

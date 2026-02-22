@@ -411,15 +411,15 @@ class TestComputeDimensionScores:
         assert "Naming Quality" in result
         assert result["Naming Quality"]["score"] == 100.0
 
-    def test_unassessed_dim_with_review_findings_included(self):
-        """Unassessed dimension with open review findings is still included."""
+    def test_unassessed_dim_with_review_findings_still_100(self):
+        """Review findings don't drive score — only assessments do."""
         f = _finding("review", status="open", file="a.py")
         f["detail"] = {"dimension": "naming_quality"}
         findings = _findings_dict(f)
         result = compute_dimension_scores(findings, {})
-        # Has an open review finding → included even without assessment
+        # Review findings are tracked but don't affect score
         assert "Naming Quality" in result
-        assert result["Naming Quality"]["score"] == 90.0
+        assert result["Naming Quality"]["score"] == 100.0
         assert result["Naming Quality"]["issues"] == 1
 
     def test_with_some_findings(self):
@@ -816,69 +816,59 @@ class TestComputeScoreImpact:
 # ===================================================================
 
 
-class TestHolisticMultiplier:
-    """Holistic findings get HOLISTIC_MULTIPLIER weight and bypass per-file cap."""
+class TestReviewScoringExclusion:
+    """Review findings are excluded from detection scoring (assessed via subjective only)."""
 
-    def test_multiplier_constant_defined(self):
+    def test_multiplier_constant_still_defined(self):
+        """HOLISTIC_MULTIPLIER still exists for display/priority purposes."""
         from desloppify.scoring import HOLISTIC_MULTIPLIER, HOLISTIC_POTENTIAL
 
         assert HOLISTIC_MULTIPLIER == 10.0
         assert HOLISTIC_POTENTIAL == 10
 
-    def test_holistic_finding_weighted(self):
-        """Single holistic finding contributes confidence * HOLISTIC_MULTIPLIER."""
-        from desloppify.scoring import HOLISTIC_MULTIPLIER
-
+    def test_review_findings_return_perfect_score(self):
+        """Review detector always returns (1.0, 0, 0.0) — excluded from scoring."""
         f = _finding("review", confidence="high", file=".")
         f["detail"] = {"holistic": True}
         findings = _findings_dict(f)
         rate, issues, weighted = detector_pass_rate("review", findings, 60)
-        assert issues == 1
-        assert weighted == pytest.approx(1.0 * HOLISTIC_MULTIPLIER)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_holistic_medium_confidence(self):
-        from desloppify.scoring import HOLISTIC_MULTIPLIER
-
-        f = _finding("review", confidence="medium", file=".")
-        f["detail"] = {"holistic": True}
-        findings = _findings_dict(f)
-        _, _, weighted = detector_pass_rate("review", findings, 60)
-        assert weighted == pytest.approx(0.7 * HOLISTIC_MULTIPLIER)
-
-    def test_holistic_no_cap(self):
-        """Multiple holistic findings are NOT capped per file."""
-        from desloppify.scoring import HOLISTIC_MULTIPLIER
-
+    def test_multiple_review_findings_excluded(self):
+        """Multiple review findings still return perfect score."""
         f1 = _finding("review", confidence="high", file=".")
         f1["detail"] = {"holistic": True}
         f2 = _finding("review", confidence="high", file=".")
         f2["detail"] = {"holistic": True}
         findings = _findings_dict(f1, f2)
-        _, issues, weighted = detector_pass_rate("review", findings, 60)
-        assert issues == 2
-        assert weighted == pytest.approx(2.0 * HOLISTIC_MULTIPLIER)
+        rate, issues, weighted = detector_pass_rate("review", findings, 60)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_file_dot_without_holistic_detail_is_file_based(self):
-        """file="." WITHOUT detail.holistic should be treated as regular file-based."""
+    def test_file_based_review_also_excluded(self):
+        """file="." without holistic detail is also excluded for review detector."""
         f = _finding("review", confidence="high", file=".")
-        f["detail"] = {}  # no holistic flag
+        f["detail"] = {}
         findings = _findings_dict(f)
-        _, issues, weighted = detector_pass_rate("review", findings, 60)
-        assert issues == 1
-        # Regular per-file: capped at 1.0
-        assert weighted == pytest.approx(1.0)
+        rate, issues, weighted = detector_pass_rate("review", findings, 60)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_mixed_holistic_and_regular(self):
-        """Holistic + regular file findings combine correctly."""
+    def test_mixed_review_findings_excluded(self):
+        """Both holistic and file-based review findings are excluded."""
         h = _finding("review", confidence="high", file=".")
         h["detail"] = {"holistic": True}
         r1 = _finding("review", confidence="high", file="src/a.py")
         r2 = _finding("review", confidence="high", file="src/a.py")
         findings = _findings_dict(h, r1, r2)
-        _, issues, weighted = detector_pass_rate("review", findings, 60)
-        assert issues == 3
-        # Holistic: 1.0*10=10.0, file: 2 findings same file capped at 1.0
-        assert weighted == pytest.approx(10.0 + 1.0)
+        rate, issues, weighted = detector_pass_rate("review", findings, 60)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
 
 # ===================================================================
@@ -907,15 +897,16 @@ class TestSubjectiveScoring:
         result = compute_dimension_scores({}, {}, subjective_assessments=assessments)
         assert "Naming Quality" in result
         dim = result["Naming Quality"]
-        assert dim["score"] == 100.0
+        # Assessment score drives dimension score directly.
+        assert dim["score"] == 75.0
         assert dim["tier"] == 4
         assert dim["checks"] == SUBJECTIVE_CHECKS
         assert dim["issues"] == 0
         assert "subjective_assessment" in dim["detectors"]
         det = dim["detectors"]["subjective_assessment"]
         assert det["potential"] == SUBJECTIVE_CHECKS
-        assert det["pass_rate"] == 1.0
-        assert det["weighted_failures"] == 0.0
+        assert det["pass_rate"] == 0.75
+        assert det["weighted_failures"] == pytest.approx(2.5)
         assert det["assessment_score"] == 75.0
 
     def test_allowed_subjective_dimensions_filters_unknown(self):
@@ -941,8 +932,9 @@ class TestSubjectiveScoring:
         result = compute_dimension_scores({}, {}, subjective_assessments=assessments)
         assert "Naming Quality" in result
         assert "Error Handling" in result
-        assert result["Naming Quality"]["score"] == 100.0
-        assert result["Error Handling"]["score"] == 100.0
+        # Assessment scores drive dimension scores directly.
+        assert result["Naming Quality"]["score"] == 80.0
+        assert result["Error Handling"]["score"] == 60.0
 
     def test_assessment_perfect_score(self):
         """score=100 yields pass_rate=1.0 and weighted_failures=0."""
@@ -953,14 +945,14 @@ class TestSubjectiveScoring:
         assert det["weighted_failures"] == 0.0
 
     def test_assessment_zero_score(self):
-        """score metadata does not lower an issue-free subjective dimension."""
+        """Zero assessment score yields zero dimension score."""
         assessments = {"disaster": {"score": 0}}
         result = compute_dimension_scores({}, {}, subjective_assessments=assessments)
         dim = result["Disaster"]
-        assert dim["score"] == 100.0
+        assert dim["score"] == 0.0
         det = dim["detectors"]["subjective_assessment"]
-        assert det["pass_rate"] == 1.0
-        assert det["weighted_failures"] == 0.0
+        assert det["pass_rate"] == 0.0
+        assert det["weighted_failures"] == pytest.approx(SUBJECTIVE_CHECKS)
         assert det["assessment_score"] == 0.0
 
     def test_scan_reset_subjective_forces_zero_until_rereview(self):
@@ -987,11 +979,11 @@ class TestSubjectiveScoring:
         }
         result = compute_dimension_scores({}, {}, subjective_assessments=assessments)
         assert result["Too High"]["score"] == 100.0
-        assert result["Too Low"]["score"] == 100.0
+        assert result["Too Low"]["score"] == 0.0
         high_det = result["Too High"]["detectors"]["subjective_assessment"]
         low_det = result["Too Low"]["detectors"]["subjective_assessment"]
         assert high_det["pass_rate"] == 1.0
-        assert low_det["pass_rate"] == 1.0
+        assert low_det["pass_rate"] == 0.0
         assert high_det["assessment_score"] == 100.0
         assert low_det["assessment_score"] == 0.0
 
@@ -1026,14 +1018,14 @@ class TestSubjectiveScoring:
         )
 
         # Mechanical pool: Code quality at 100% (only mechanical dim)
-        # Subjective pool: no open review findings → subj_avg = 100.0
-        # Budget blend: 100.0 in both pools.
+        # Subjective pool: all assessments at 0 → subj_avg = 0.0
+        # Budget blend: 100.0 * 0.4 + 0.0 * 0.6 = 40.0
         score = compute_health_score(result)
-        expected = 100.0 * (1 - SUBJECTIVE_WEIGHT_FRACTION) + 100.0 * SUBJECTIVE_WEIGHT_FRACTION
+        expected = 100.0 * (1 - SUBJECTIVE_WEIGHT_FRACTION) + 0.0 * SUBJECTIVE_WEIGHT_FRACTION
         assert score == pytest.approx(round(expected, 1), abs=0.2)
 
     def test_assessment_counts_open_review_findings(self):
-        """Open review findings with matching dimension are counted as issues."""
+        """Open review findings are tracked but don't drive the score."""
         f1 = _finding("review", status="open", file="a.py")
         f1["detail"] = {"dimension": "naming_quality"}
         f2 = _finding("review", status="open", file="b.py")
@@ -1046,11 +1038,12 @@ class TestSubjectiveScoring:
             findings, {}, subjective_assessments=assessments
         )
         dim = result["Naming Quality"]
-        assert dim["issues"] == 2  # only the 2 open ones
+        assert dim["issues"] == 2  # only the 2 open ones tracked
         det = dim["detectors"]["subjective_assessment"]
         assert det["issues"] == 2
-        assert det["pass_rate"] == 0.8
-        assert dim["score"] == 80.0
+        # Score driven by assessment (70), not issue count
+        assert det["pass_rate"] == 0.7
+        assert dim["score"] == 70.0
 
     def test_assessment_component_breakdown_propagates_to_detector_metadata(self):
         assessments = {

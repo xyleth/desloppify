@@ -26,7 +26,7 @@ from desloppify.utils import (
     PROJECT_ROOT as PROJECT_ROOT,
 )
 from desloppify.utils import (
-    c,
+    colorize,
     find_ts_files,
     get_area,
     print_table,
@@ -282,7 +282,7 @@ def cmd_patterns(args: argparse.Namespace) -> None:
     family_names = sorted(PATTERN_FAMILIES.keys())
     if census:
         print(
-            c(
+            colorize(
                 f"\nPattern Census ({len(census)} areas × {len(family_names)} families)\n",
                 "bold",
             )
@@ -291,7 +291,7 @@ def cmd_patterns(args: argparse.Namespace) -> None:
         # Show family legend
         for name in family_names:
             fam = PATTERN_FAMILIES[name]
-            marker = c("▶", "yellow") if fam["type"] == "competing" else c("·", "dim")
+            marker = colorize("▶", "yellow") if fam["type"] == "competing" else colorize("·", "dim")
             print(f"  {marker} {name}: {fam['description']}")
         print()
 
@@ -303,32 +303,32 @@ def cmd_patterns(args: argparse.Namespace) -> None:
                 if patterns:
                     cells.append(", ".join(sorted(patterns)))
                 else:
-                    cells.append(c("-", "dim"))
+                    cells.append(colorize("-", "dim"))
             rows.append([area, *cells])
         headers = ["Area", *family_names]
         widths = [40] + [max(15, len(f) + 2) for f in family_names]
         print_table(headers, rows, widths)
     else:
-        print(c("No pattern usage found.", "dim"))
+        print(colorize("No pattern usage found.", "dim"))
 
     # Anomalies (competing families only)
     print()
     if anomalies:
-        print(c(f"Competing-pattern anomalies: {len(anomalies)}\n", "bold"))
+        print(colorize(f"Competing-pattern anomalies: {len(anomalies)}\n", "bold"))
         for a in anomalies[: args.top]:
             patterns_str = ", ".join(a["patterns_used"])
-            conf_badge = c(
+            conf_badge = colorize(
                 f"[{a['confidence']}]",
                 "yellow" if a["confidence"] == "medium" else "dim",
             )
-            print(f"  {c(a['area'], 'cyan')} :: {a['family']} {conf_badge}")
+            print(f"  {colorize(a['area'], 'cyan')} :: {a['family']} {conf_badge}")
             print(f"    Patterns: {patterns_str}")
             for pname, matches in (a.get("pattern_evidence") or {}).items():
                 files = [m.get("file", "") for m in matches[:3]]
                 if files:
                     print(f"    Evidence {pname}: {', '.join(files)}")
-            print(c(f"    {a['review']}", "yellow"))
+            print(colorize(f"    {a['review']}", "yellow"))
             print()
     else:
-        print(c("No competing-pattern anomalies detected.", "green"))
+        print(colorize("No competing-pattern anomalies detected.", "green"))
     print()

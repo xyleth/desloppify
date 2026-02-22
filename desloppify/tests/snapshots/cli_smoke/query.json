@@ -329,7 +329,7 @@
     },
     "existing_findings": {
       ".": [
-        "subjective_review: No holistic codebase review on record \u2014 run `desloppify review --prepare --holis"
+        "subjective_review: No holistic codebase review on record \u2014 run `desloppify review --prepare`"
       ]
     },
     "codebase_stats": {
@@ -351,7 +351,7 @@
     "Cross-reference findings with the sibling_behavior and convention data",
     "For simple issues (missing import, wrong name): fix directly in code, then note as resolved",
     "For cross-cutting issues: write to findings.json (format described in system_prompt)",
-    "Import: desloppify review --import findings.json --holistic",
+    "Import: desloppify review --import findings.json",
     "Run `desloppify issues` to see the work queue, then fix each finding and resolve"
   ],
   "investigation_batches": [],

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from desloppify.engine.state_internal.schema import empty_state as build_empty_state
+from desloppify.engine._state.schema import empty_state as build_empty_state
 from desloppify.intelligence.review.importing.holistic import (
     import_holistic_findings,
     update_holistic_review_cache,
@@ -40,7 +40,7 @@ from desloppify.intelligence.review.prepare import (
 from desloppify.intelligence.review.prepare import (
     prepare_review as _prepare_review_impl,
 )
-from desloppify.intelligence.review.prepare_internal.remediation_engine import (
+from desloppify.intelligence.review._prepare.remediation_engine import (
     empty_plan as _empty_plan,
 )
 from desloppify.intelligence.review.remediation import (
@@ -544,6 +544,7 @@ class TestImportHolisticFindings:
                 "summary": "Too many responsibilities",
                 "confidence": "high",
                 "related_files": ["src/big.ts"],
+                "suggestion": "Split by domain",
             }
         ]
         import_holistic_findings(_as_review_payload(data), empty_state, "typescript")

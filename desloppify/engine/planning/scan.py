@@ -7,9 +7,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from desloppify import utils as utils_mod
 from desloppify.engine.planning.common import is_subjective_phase
-from desloppify.languages.framework.base.types import LangConfig
-from desloppify.languages.framework.runtime import LangRun, make_lang_run
+from desloppify.engine.policy.zones import FileZoneMap
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
+from desloppify.languages._framework.runtime import LangRun, make_lang_run
 from desloppify.utils import colorize
 
 
@@ -26,7 +28,9 @@ def _stderr(msg: str) -> None:
     print(colorize(msg, "dim"), file=sys.stderr)
 
 
-def _resolve_lang(lang, project_root: Path):
+def _resolve_lang(
+    lang: LangConfig | LangRun | None, project_root: Path
+) -> LangConfig | LangRun:
     if lang is not None:
         return lang
 
@@ -41,15 +45,12 @@ def _resolve_lang(lang, project_root: Path):
     return lang_mod.get_lang(detected)
 
 
-def _build_zone_map(path: Path, lang, zone_overrides: dict[str, str] | None) -> None:
+def _build_zone_map(path: Path, lang: LangRun, zone_overrides: dict[str, str] | None) -> None:
     if not (lang.zone_rules and lang.file_finder):
         return
 
-    utils_mod = importlib.import_module("desloppify.utils")
-    zones_mod = importlib.import_module("desloppify.engine.policy.zones")
-
     files = lang.file_finder(path)
-    lang.zone_map = zones_mod.FileZoneMap(
+    lang.zone_map = FileZoneMap(
         files, lang.zone_rules, rel_fn=utils_mod.rel, overrides=zone_overrides
     )
     counts = lang.zone_map.counts()
@@ -58,8 +59,18 @@ def _build_zone_map(path: Path, lang, zone_overrides: dict[str, str] | None) -> 
     )
     _stderr(f"  Zones: {zone_str}")
 
+    from desloppify.languages._framework.generic import capability_report
 
-def _select_phases(lang, *, include_slow: bool, profile: str):
+    report = capability_report(lang)
+    if report is not None:
+        present, missing = report
+        if present:
+            _stderr(f"  Capabilities: {', '.join(present)}")
+        if missing:
+            _stderr(f"  Not available: {', '.join(missing)}")
+
+
+def _select_phases(lang: LangRun, *, include_slow: bool, profile: str) -> list[DetectorPhase]:
     active_profile = profile if profile in {"objective", "full", "ci"} else "full"
     phases = lang.phases
     if not include_slow or active_profile == "ci":
@@ -69,7 +80,7 @@ def _select_phases(lang, *, include_slow: bool, profile: str):
     return phases
 
 
-def _run_phases(path: Path, lang, phases) -> tuple[list[dict], dict[str, int]]:
+def _run_phases(path: Path, lang: LangRun, phases: list[DetectorPhase]) -> tuple[list[dict], dict[str, int]]:
     findings: list[dict] = []
     all_potentials: dict[str, int] = {}
 
@@ -83,7 +94,7 @@ def _run_phases(path: Path, lang, phases) -> tuple[list[dict], dict[str, int]]:
     return findings, all_potentials
 
 
-def _stamp_finding_context(findings: list[dict], lang) -> None:
+def _stamp_finding_context(findings: list[dict], lang: LangRun) -> None:
     if not findings:
         return
 
@@ -106,7 +117,7 @@ def _stamp_finding_context(findings: list[dict], lang) -> None:
 
 def _generate_findings_from_lang(
     path: Path,
-    lang,
+    lang: LangRun,
     *,
     include_slow: bool = True,
     zone_overrides: dict[str, str] | None = None,
@@ -128,7 +139,6 @@ def generate_findings(
     options: PlanScanOptions | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """Run all detectors and convert results to normalized findings."""
-    utils_mod = importlib.import_module("desloppify.utils")
     resolved_options = options or PlanScanOptions()
 
     resolved_lang = _resolve_lang(lang, utils_mod.PROJECT_ROOT)

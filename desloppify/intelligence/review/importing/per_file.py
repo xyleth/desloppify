@@ -8,6 +8,8 @@ from typing import Any
 
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.importing.shared import (
+    _lang_potentials,
+    _review_file_cache,
     extract_reviewed_files,
     store_assessments,
 )
@@ -110,7 +112,7 @@ def import_review_findings(
     }
     review_potential_files = valid_reviewed_files | set(reviewed_files)
 
-    potentials = state.setdefault("potentials", {}).setdefault(lang_name, {})
+    potentials = _lang_potentials(state, lang_name)
     potentials["review"] = len(review_potential_files)
 
     diff = merge_scan(
@@ -163,8 +165,7 @@ def update_review_cache(
     """Update per-file review cache with timestamps and content hashes."""
     selection_mod = importlib.import_module("desloppify.intelligence.review.selection")
 
-    review_cache = state.setdefault("review_cache", {})
-    file_cache = review_cache.setdefault("files", {})
+    file_cache = _review_file_cache(state)
     now = utc_now_fn()
 
     findings_by_file: dict[str, list[dict]] = {}

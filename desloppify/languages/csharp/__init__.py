@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
+from desloppify.core._internal.text_utils import get_area
+from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
@@ -38,12 +39,14 @@ from desloppify.languages.csharp.review import api_surface as csharp_review_api_
 from desloppify.languages.csharp.review import (
     module_patterns as csharp_review_module_patterns,
 )
-from desloppify.languages.framework.base.phase_builders import (
+from desloppify.languages._framework.treesitter.phases import all_treesitter_phases
+from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
+    detector_phase_signature,
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
-from desloppify.languages.framework.base.types import (
+from desloppify.languages._framework.base.types import (
     DetectorPhase,
     LangConfig,
     LangValueSpec,
@@ -57,20 +60,12 @@ _CSHARP_MOVE_HELPERS = (
 )
 
 
-def _get_csharp_area(filepath: str) -> str:
-    """Derive an area name from file path for lightweight grouping."""
-    parts = [part for part in re.split(r"[\\/]+", filepath) if part]
-    if len(parts) > 1:
-        return "/".join(parts[:2])
-    return parts[0] if parts else filepath
-
-
 def _build_dep_graph(path: Path) -> dict:
     """Build C# dependency graph."""
     return build_csharp_dep_graph(path)
 
 
-def _extract_csharp_functions(path: Path) -> list:
+def _extract_csharp_functions(path: Path) -> list[FunctionInfo]:
     """Extract all C# functions for duplicate detection."""
     functions = []
     for filepath in find_csharp_files(path):
@@ -123,12 +118,14 @@ class CSharpConfig(LangConfig):
             phases=[
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
+                *all_treesitter_phases("csharp"),
+                detector_phase_signature(),
                 detector_phase_test_coverage(),
                 detector_phase_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers={},
-            get_area=_get_csharp_area,
+            get_area=get_area,
             detect_commands=get_detect_commands(),
             boundaries=[],
             typecheck_cmd="dotnet build",

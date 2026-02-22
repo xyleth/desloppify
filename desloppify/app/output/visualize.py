@@ -19,11 +19,7 @@ D3_CDN_URL = "https://d3js.org/d3.v7.min.js"
 logger = logging.getLogger(__name__)
 
 
-__all__ = ["D3_CDN_URL"]
-
-
-def _fmt_score(value) -> str:
-    return f"{value:.1f}" if isinstance(value, int | float) else "N/A"
+__all__ = ["D3_CDN_URL", "cmd_viz", "cmd_tree"]
 
 
 def _resolve_visualization_lang(path: Path, lang):
@@ -160,17 +156,17 @@ def generate_visualization(
     """Generate an HTML treemap visualization."""
     files = _collect_file_data(path, lang)
     dep_graph = _build_dep_graph_for_path(path, lang)
-    fbf = _findings_by_file(state)
-    tree = _build_tree(files, dep_graph, fbf)
+    findings_by_file = _findings_by_file(state)
+    tree = _build_tree(files, dep_graph, findings_by_file)
     # Escape </ to prevent </script> in filenames from breaking HTML
     tree_json = json.dumps(tree).replace("</", r"<\/")
 
     # Stats for header
     total_files = len(files)
     total_loc = sum(f["loc"] for f in files)
-    total_findings = sum(len(v) for v in fbf.values())
+    total_findings = sum(len(v) for v in findings_by_file.values())
     open_findings = sum(
-        1 for fs in fbf.values() for f in fs if f.get("status") == "open"
+        1 for fs in findings_by_file.values() for f in fs if f.get("status") == "open"
     )
     if state:
         overall_score = get_overall_score(state)

@@ -11,12 +11,16 @@ from desloppify.intelligence.narrative._constants import (
     DETECTOR_TOOLS,
     STRUCTURAL_MERGE,
 )
-from desloppify.intelligence.narrative.core import NarrativeContext, compute_narrative
+from desloppify.intelligence.narrative.core import (
+    NarrativeContext,
+    NarrativeResult,
+    compute_narrative,
+)
 
 __all__ = [
     "compute_narrative",
     "NarrativeContext",
+    "NarrativeResult",
     "STRUCTURAL_MERGE",
     "DETECTOR_TOOLS",
-    "_FEEDBACK_URL",
 ]

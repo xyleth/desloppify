@@ -13,11 +13,11 @@ from desloppify.app.commands.scan.scan import (
     _effective_include_slow,
     _format_delta,
     _resolve_scan_profile,
-    _show_diff_summary,
-    _show_dimension_deltas,
-    _show_post_scan_analysis,
-    _show_score_delta,
-    _show_strict_target_progress,
+    show_diff_summary,
+    show_dimension_deltas,
+    show_post_scan_analysis,
+    show_score_delta,
+    show_strict_target_progress,
     _warn_explicit_lang_with_no_files,
     cmd_scan,
 )
@@ -38,7 +38,7 @@ class TestScanModuleSanity:
         assert callable(_audit_excluded_dirs)
         assert callable(_collect_codebase_metrics)
         assert callable(_format_delta)
-        assert callable(_show_diff_summary)
+        assert callable(show_diff_summary)
         assert callable(_warn_explicit_lang_with_no_files)
 
 
@@ -85,27 +85,27 @@ class TestCmdScanExecution:
         monkeypatch.setattr(
             scan_cmd_mod, "resolve_noise_snapshot", lambda _state, _config: noise
         )
-        monkeypatch.setattr(scan_cmd_mod, "_show_diff_summary", lambda _diff: None)
+        monkeypatch.setattr(scan_cmd_mod, "show_diff_summary", lambda _diff: None)
         monkeypatch.setattr(
             scan_cmd_mod,
-            "_show_score_delta",
+            "show_score_delta",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(
-            scan_cmd_mod, "_show_scorecard_subjective_measures", lambda _state: None
+            scan_cmd_mod, "show_scorecard_subjective_measures", lambda _state: None
         )
         monkeypatch.setattr(
-            scan_cmd_mod, "_show_score_model_breakdown", lambda _state: None
+            scan_cmd_mod, "show_score_model_breakdown", lambda _state: None
         )
         monkeypatch.setattr(
             scan_cmd_mod, "target_strict_score_from_config", lambda _config, fallback=95.0: fallback
         )
         monkeypatch.setattr(
-            scan_cmd_mod, "_show_score_integrity", lambda _state, _diff: None
+            scan_cmd_mod, "show_score_integrity", lambda _state, _diff: None
         )
         monkeypatch.setattr(
             scan_cmd_mod,
-            "_show_post_scan_analysis",
+            "show_post_scan_analysis",
             lambda *_args, **_kwargs: ([], {"headline": None, "actions": []}),
         )
         monkeypatch.setattr(
@@ -195,42 +195,42 @@ class TestFormatDelta:
 
 
 # ---------------------------------------------------------------------------
-# _show_diff_summary
+# show_diff_summary
 # ---------------------------------------------------------------------------
 
 
 class TestShowDiffSummary:
-    """_show_diff_summary prints the one-liner scan diff."""
+    """show_diff_summary prints the one-liner scan diff."""
 
     def test_all_zeros(self, capsys):
-        _show_diff_summary({"new": 0, "auto_resolved": 0, "reopened": 0})
+        show_diff_summary({"new": 0, "auto_resolved": 0, "reopened": 0})
         out = capsys.readouterr().out
         assert "No changes" in out
 
     def test_new_findings(self, capsys):
-        _show_diff_summary({"new": 5, "auto_resolved": 0, "reopened": 0})
+        show_diff_summary({"new": 5, "auto_resolved": 0, "reopened": 0})
         out = capsys.readouterr().out
         assert "+5 new" in out
 
     def test_resolved_findings(self, capsys):
-        _show_diff_summary({"new": 0, "auto_resolved": 3, "reopened": 0})
+        show_diff_summary({"new": 0, "auto_resolved": 3, "reopened": 0})
         out = capsys.readouterr().out
         assert "-3 resolved" in out
 
     def test_reopened_findings(self, capsys):
-        _show_diff_summary({"new": 0, "auto_resolved": 0, "reopened": 2})
+        show_diff_summary({"new": 0, "auto_resolved": 0, "reopened": 2})
         out = capsys.readouterr().out
         assert "2 reopened" in out
 
     def test_combined(self, capsys):
-        _show_diff_summary({"new": 3, "auto_resolved": 2, "reopened": 1})
+        show_diff_summary({"new": 3, "auto_resolved": 2, "reopened": 1})
         out = capsys.readouterr().out
         assert "+3 new" in out
         assert "-2 resolved" in out
         assert "1 reopened" in out
 
     def test_suspect_detectors_warning(self, capsys):
-        _show_diff_summary(
+        show_diff_summary(
             {
                 "new": 0,
                 "auto_resolved": 0,
@@ -244,7 +244,7 @@ class TestShowDiffSummary:
 
 
 # ---------------------------------------------------------------------------
-# _show_score_delta
+# show_score_delta
 # ---------------------------------------------------------------------------
 
 class TestShowScoreDelta:
@@ -256,7 +256,7 @@ class TestShowScoreDelta:
             "strict_score": 87.0,
             "verified_strict_score": 86.0,
         }
-        _show_score_delta(
+        show_score_delta(
             state,
             prev_overall=80.0,
             prev_objective=78.0,
@@ -269,12 +269,12 @@ class TestShowScoreDelta:
 
 
 # ---------------------------------------------------------------------------
-# _show_strict_target_progress
+# show_strict_target_progress
 # ---------------------------------------------------------------------------
 
 class TestShowStrictTargetProgress:
     def test_below_default_target(self, capsys):
-        target, gap = _show_strict_target_progress(
+        target, gap = show_strict_target_progress(
             {"target": 95.0, "current": 90.0, "gap": 5.0, "state": "below"}
         )
         out = capsys.readouterr().out
@@ -284,7 +284,7 @@ class TestShowStrictTargetProgress:
         assert "below target" in out
 
     def test_above_custom_target(self, capsys):
-        target, gap = _show_strict_target_progress(
+        target, gap = show_strict_target_progress(
             {"target": 96.0, "current": 98.0, "gap": -2.0, "state": "above"}
         )
         out = capsys.readouterr().out
@@ -294,7 +294,7 @@ class TestShowStrictTargetProgress:
         assert "above target" in out
 
     def test_invalid_config_falls_back_to_default(self, capsys):
-        target, gap = _show_strict_target_progress(
+        target, gap = show_strict_target_progress(
             {
                 "target": 95.0,
                 "current": 94.0,
@@ -310,7 +310,7 @@ class TestShowStrictTargetProgress:
         assert "below target" in out
 
     def test_unavailable_strict_score(self, capsys):
-        target, gap = _show_strict_target_progress({"target": 95.0, "current": None, "gap": None, "state": "unavailable"})
+        target, gap = show_strict_target_progress({"target": 95.0, "current": None, "gap": None, "state": "unavailable"})
         out = capsys.readouterr().out
         assert target == 95
         assert gap is None
@@ -453,12 +453,12 @@ class TestWarnExplicitLangWithNoFiles:
 
 
 # ---------------------------------------------------------------------------
-# _show_post_scan_analysis
+# show_post_scan_analysis
 # ---------------------------------------------------------------------------
 
 
 class TestShowPostScanAnalysis:
-    """_show_post_scan_analysis prints warnings and narrative."""
+    """show_post_scan_analysis prints warnings and narrative."""
 
     def test_reopened_warning(self, monkeypatch, capsys):
         monkeypatch.setattr(
@@ -477,7 +477,7 @@ class TestShowPostScanAnalysis:
             "objective_score": 50,
             "strict_score": 50,
         }
-        warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
+        warnings, narrative = show_post_scan_analysis(diff, state, FakeLang())
         assert len(warnings) >= 1
         assert any("reopened" in w.lower() for w in warnings)
 
@@ -498,7 +498,7 @@ class TestShowPostScanAnalysis:
             "objective_score": 50,
             "strict_score": 50,
         }
-        warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
+        warnings, _ = show_post_scan_analysis(diff, state, FakeLang())
         assert any("cascading" in w.lower() for w in warnings)
 
     def test_chronic_reopeners_warning(self, monkeypatch, capsys):
@@ -523,7 +523,7 @@ class TestShowPostScanAnalysis:
             "objective_score": 50,
             "strict_score": 50,
         }
-        warnings, _ = _show_post_scan_analysis(diff, state, FakeLang())
+        warnings, _ = show_post_scan_analysis(diff, state, FakeLang())
         assert any("chronic" in w.lower() for w in warnings)
 
     def test_no_warnings_clean_scan(self, monkeypatch, capsys):
@@ -543,7 +543,7 @@ class TestShowPostScanAnalysis:
             "objective_score": 90,
             "strict_score": 90,
         }
-        warnings, narrative = _show_post_scan_analysis(diff, state, FakeLang())
+        warnings, narrative = show_post_scan_analysis(diff, state, FakeLang())
         assert warnings == []
 
     def test_shows_top_action(self, monkeypatch, capsys):
@@ -571,7 +571,7 @@ class TestShowPostScanAnalysis:
             "objective_score": 50,
             "strict_score": 50,
         }
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "desloppify fix unused-imports" in out
 
@@ -597,7 +597,7 @@ class TestShowPostScanAnalysis:
                 },
             },
         }
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "Subjective scores below 90" in out
         assert "You can run the subjective scoring with `desloppify review --prepare`" in out
@@ -627,7 +627,7 @@ class TestShowPostScanAnalysis:
                 },
             },
         }
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "You can rerun the subjective scoring with `desloppify review --prepare`" in out
 
@@ -653,7 +653,7 @@ class TestShowPostScanAnalysis:
                 },
             },
         }
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "You can rerun the subjective scoring with `desloppify review --prepare`" not in out
 
@@ -678,7 +678,7 @@ class TestShowPostScanAnalysis:
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
         state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "Reminders:" in out
         assert "Design review is stale" in out
@@ -706,7 +706,7 @@ class TestShowPostScanAnalysis:
 
         diff = {"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []}
         state = {"findings": {}, "overall_score": 90, "objective_score": 90, "strict_score": 90}
-        _show_post_scan_analysis(diff, state, FakeLang())
+        show_post_scan_analysis(diff, state, FakeLang())
         out = capsys.readouterr().out
         assert "Narrative Plan:" in out
         assert "Why now: Security work should come first." in out
@@ -714,18 +714,18 @@ class TestShowPostScanAnalysis:
 
 
 # ---------------------------------------------------------------------------
-# _show_dimension_deltas
+# show_dimension_deltas
 # ---------------------------------------------------------------------------
 
 
 class TestShowDimensionDeltas:
-    """_show_dimension_deltas shows which dimensions changed."""
+    """show_dimension_deltas shows which dimensions changed."""
 
     def test_no_change_no_output(self, monkeypatch, capsys):
         # Need DIMENSIONS to exist
         prev = {d.name: {"score": 95.0, "strict": 90.0} for d in DIMENSIONS}
         current = {d.name: {"score": 95.0, "strict": 90.0} for d in DIMENSIONS}
-        _show_dimension_deltas(prev, current)
+        show_dimension_deltas(prev, current)
         out = capsys.readouterr().out
         assert "Moved:" not in out
 
@@ -735,7 +735,7 @@ class TestShowDimensionDeltas:
         dim_name = DIMENSIONS[0].name
         prev = {dim_name: {"score": 90.0, "strict": 85.0}}
         current = {dim_name: {"score": 95.0, "strict": 90.0}}
-        _show_dimension_deltas(prev, current)
+        show_dimension_deltas(prev, current)
         out = capsys.readouterr().out
         assert "Moved:" in out
         assert dim_name in out

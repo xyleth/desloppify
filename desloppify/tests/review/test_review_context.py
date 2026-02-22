@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from desloppify.engine.state_internal.schema import empty_state as make_empty_state
+from desloppify.engine._state.schema import empty_state as make_empty_state
 from desloppify.intelligence.review.context import (
     ReviewContext,
     build_review_context,

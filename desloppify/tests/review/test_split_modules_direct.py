@@ -15,7 +15,7 @@ from desloppify.intelligence.review.importing.shared import (
     extract_reviewed_files,
     store_assessments,
 )
-from desloppify.intelligence.review.prepare_internal.remediation_engine import (
+from desloppify.intelligence.review._prepare.remediation_engine import (
     empty_plan,
 )
 
@@ -66,7 +66,7 @@ def test_remediation_empty_plan_renders_scores_block():
     content = empty_plan(state, "python")
     assert "Holistic Review: Remediation Plan" in content
     assert (
-        "desloppify --lang python review --prepare --holistic --path <src>" in content
+        "desloppify --lang python review --prepare --path <src>" in content
     )
 
 

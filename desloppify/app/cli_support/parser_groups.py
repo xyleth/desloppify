@@ -2,18 +2,40 @@
 
 from __future__ import annotations
 
-from desloppify.app.cli_support.parser_groups_admin import (
+from desloppify.app.cli_support.parser_groups_admin import (  # noqa: F401 (re-exports)
     _add_config_parser,
     _add_detect_parser,
     _add_dev_parser,
     _add_fix_parser,
     _add_issues_parser,
+    _add_langs_parser,
     _add_move_parser,
     _add_plan_parser,
     _add_review_parser,
     _add_viz_parser,
     _add_zone_parser,
 )
+
+__all__ = [
+    "_add_config_parser",
+    "_add_detect_parser",
+    "_add_dev_parser",
+    "_add_fix_parser",
+    "_add_ignore_parser",
+    "_add_issues_parser",
+    "_add_langs_parser",
+    "_add_move_parser",
+    "_add_next_parser",
+    "_add_plan_parser",
+    "_add_resolve_parser",
+    "_add_review_parser",
+    "_add_scan_parser",
+    "_add_show_parser",
+    "_add_status_parser",
+    "_add_tree_parser",
+    "_add_viz_parser",
+    "_add_zone_parser",
+]
 
 
 def _add_scan_parser(sub) -> None:
@@ -217,22 +239,3 @@ def _add_ignore_parser(sub) -> None:
     p_ignore.add_argument("--state", type=str, default=None)
 
 
-__all__ = [
-    "_add_config_parser",
-    "_add_detect_parser",
-    "_add_dev_parser",
-    "_add_fix_parser",
-    "_add_ignore_parser",
-    "_add_issues_parser",
-    "_add_move_parser",
-    "_add_next_parser",
-    "_add_plan_parser",
-    "_add_resolve_parser",
-    "_add_review_parser",
-    "_add_scan_parser",
-    "_add_show_parser",
-    "_add_status_parser",
-    "_add_tree_parser",
-    "_add_viz_parser",
-    "_add_zone_parser",
-]

@@ -7,6 +7,11 @@ from pathlib import Path
 
 from desloppify.languages import available_langs, get_lang
 
+
+def _full_langs() -> list[str]:
+    """Return only languages with full (non-generic) plugin structure."""
+    return [lang for lang in available_langs() if get_lang(lang).integration_depth == "full"]
+
 TOP_LEVEL_MODULES = (
     "commands",
     "extractors",
@@ -49,14 +54,14 @@ TEST_COVERAGE_CONSTANTS = (
 
 
 def test_each_language_has_standard_top_level_modules():
-    for lang in available_langs():
+    for lang in _full_langs():
         for module_name in TOP_LEVEL_MODULES:
             mod = importlib.import_module(f"desloppify.languages.{lang}.{module_name}")
             assert mod is not None
 
 
 def test_each_language_review_module_contract():
-    for lang in available_langs():
+    for lang in _full_langs():
         mod = importlib.import_module(f"desloppify.languages.{lang}.review")
         for const_name in REVIEW_CONSTANTS:
             assert hasattr(mod, const_name), f"{lang}.review missing {const_name}"
@@ -67,7 +72,7 @@ def test_each_language_review_module_contract():
 
 
 def test_each_language_has_review_data_payloads():
-    for lang in available_langs():
+    for lang in _full_langs():
         review_mod = importlib.import_module(f"desloppify.languages.{lang}.review")
         lang_dir = Path(review_mod.__file__).resolve().parent
         assert (
@@ -76,7 +81,7 @@ def test_each_language_has_review_data_payloads():
 
 
 def test_each_language_test_coverage_module_contract():
-    for lang in available_langs():
+    for lang in _full_langs():
         mod = importlib.import_module(f"desloppify.languages.{lang}.test_coverage")
         for const_name in TEST_COVERAGE_CONSTANTS:
             assert hasattr(mod, const_name), (
@@ -102,7 +107,7 @@ def test_detect_command_keys_use_canonical_snake_case():
 
 
 def test_detect_command_registry_owned_by_language_commands_module():
-    for lang in available_langs():
+    for lang in _full_langs():
         cfg = get_lang(lang)
         expected_module = f"desloppify.languages.{lang}.commands"
         for key, fn in cfg.detect_commands.items():

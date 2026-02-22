@@ -12,7 +12,7 @@ from desloppify import languages as lang_api
 from desloppify.utils import PROJECT_ROOT
 
 if TYPE_CHECKING:
-    from desloppify.languages.framework.base.types import LangConfig
+    from desloppify.languages._framework.base.types import LangConfig
 
 
 logger = logging.getLogger(__name__)
@@ -96,14 +96,9 @@ def resolve_detection_root(
     return search_root
 
 
-def _resolve_detection_root(args) -> Path:
-    """Best root to auto-detect language from."""
-    return resolve_detection_root(args)
-
-
 def auto_detect_lang_name(args) -> str | None:
     """Auto-detect language using the most relevant root for this command."""
-    root = _resolve_detection_root(args)
+    root = resolve_detection_root(args)
     detected = lang_api.auto_detect_lang(root)
     if detected is None and root != PROJECT_ROOT:
         detected = lang_api.auto_detect_lang(PROJECT_ROOT)

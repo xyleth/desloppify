@@ -44,6 +44,10 @@ def _parse_ruff_diagnostics(
         if _is_excluded(filepath, exclusions):
             continue
 
+        # F401 in __init__.py = re-export, not dead code
+        if code == "F401" and filepath.endswith("__init__.py"):
+            continue
+
         cat = "imports" if code == "F401" else "vars"
         if category != "all" and cat != category:
             continue
@@ -83,6 +87,9 @@ def _parse_pyflakes_lines(
         if import_match and category in ("all", "imports"):
             filepath = import_match.group(1)
             if _is_excluded(filepath, exclusions):
+                continue
+            # F401 in __init__.py = re-export, not dead code
+            if filepath.endswith("__init__.py"):
                 continue
             entries.append(
                 {

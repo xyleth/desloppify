@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import desloppify.engine.planning.common as plan_common_mod
 import desloppify.engine.planning.scan as plan_scan_mod
 import desloppify.engine.planning.select as plan_select_mod
-import desloppify.engine.state_internal.filtering as filtering_mod
+import desloppify.engine._state.filtering as filtering_mod
 import desloppify.languages as lang_mod
 
 

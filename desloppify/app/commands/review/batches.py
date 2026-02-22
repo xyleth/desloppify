@@ -66,7 +66,7 @@ def do_run_batches(
     args,
     state,
     lang,
-    sp,
+    state_file,
     *,
     config: dict | None,
     run_stamp_fn,
@@ -162,7 +162,7 @@ def do_run_batches(
     safe_write_text_fn(merged_path, json.dumps(merged, indent=2) + "\n")
     print(colorize_fn(f"\n  Merged outputs: {merged_path}", "bold"))
     _print_review_quality(merged.get("review_quality", {}), colorize_fn=colorize_fn)
-    do_import_fn(str(merged_path), state, lang, sp, holistic=True, config=config)
+    do_import_fn(str(merged_path), state, lang, state_file, config=config)
 
     if getattr(args, "scan_after_import", False):
         followup_code = run_followup_scan_fn(

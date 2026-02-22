@@ -4,9 +4,9 @@ Runs ``bandit -r -f json --quiet <path>`` as a subprocess and converts its JSON
 output into the security entry dicts expected by ``phase_security``.
 
 Bandit covers AST-level security checks (shell injection, unsafe deserialization,
-SQL injection, etc.) more reliably than the custom regex/AST patterns in
-security.py. When bandit is installed, it replaces the lang-specific security
-detector; otherwise the existing regex/AST fallback is used.
+SQL injection, etc.) more reliably than custom regex/AST patterns. When bandit is
+installed, it is used as the lang-specific security detector; otherwise
+Python-specific security checks will be skipped.
 
 Bandit severity → desloppify tier/confidence mapping:
   HIGH   → tier=4, confidence="high"
@@ -107,8 +107,8 @@ def detect_with_bandit(
 ) -> tuple[list[dict], int] | None:
     """Run bandit on *path* and return (entries, files_scanned), or None on failure.
 
-    Returns None when bandit is not installed, so the caller can fall back to
-    the existing regex/AST security detector.
+    Returns None when bandit is not installed, so the caller knows to skip
+    Python-specific security checks.
     """
     try:
         result = subprocess.run(
@@ -126,7 +126,7 @@ def detect_with_bandit(
             timeout=timeout,
         )
     except FileNotFoundError:
-        logger.debug("bandit: not installed — falling back to built-in security detector")
+        logger.debug("bandit: not installed — Python-specific security checks will be skipped")
         return None
     except subprocess.TimeoutExpired:
         logger.debug("bandit: timed out after %ds", timeout)

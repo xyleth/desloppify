@@ -14,8 +14,8 @@ from desloppify.languages import (
     register_lang,
     registry_state,
 )
-from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
-from desloppify.languages.framework.discovery import load_all
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
+from desloppify.languages._framework.discovery import load_all
 
 # ── register_lang ────────────────────────────────────────────
 
@@ -80,11 +80,11 @@ def test_get_lang_unknown_raises():
         get_lang("_nonexistent_language_xyz")
 
 
-def test_get_lang_returns_fresh_instances():
-    """Each call to get_lang returns a new instance."""
+def test_get_lang_returns_same_instance():
+    """get_lang returns the registered instance (not a fresh copy)."""
     cfg1 = get_lang("python")
     cfg2 = get_lang("python")
-    assert cfg1 is not cfg2
+    assert cfg1 is cfg2
 
 
 # ── available_langs ──────────────────────────────────────────
@@ -228,9 +228,11 @@ def test_csharp_config_includes_test_coverage_phase():
 
 
 def test_all_languages_have_shared_core_phase_shape():
-    """Every language keeps shared review/security phases canonical and ordered."""
+    """Every full language keeps shared review/security phases canonical and ordered."""
     for lang_name in available_langs():
         cfg = get_lang(lang_name)
+        if cfg.integration_depth != "full":
+            continue  # generic plugins have tool-only phases
         labels = [phase.label for phase in cfg.phases]
         assert labels.count("Test coverage") == 1
         assert labels.count("Security") == 1

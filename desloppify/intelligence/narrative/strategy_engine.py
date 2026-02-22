@@ -238,14 +238,6 @@ def compute_lanes(
         }
 
     if "cleanup" in lanes:
-        cleanup_files = _files_for_actions(
-            (
-                action
-                for action in actions
-                if action["priority"] in lanes["cleanup"]["actions"]
-            ),
-            files_by_detector,
-        )
         for lane_name, lane in lanes.items():
             if lane_name == "cleanup":
                 continue

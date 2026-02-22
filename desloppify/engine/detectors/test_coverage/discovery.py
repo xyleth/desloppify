@@ -96,7 +96,6 @@ def _no_tests_findings(
                         "loc": loc,
                         "importer_count": importer_count,
                         "loc_weight": 0.0,
-                        "entrypoint": True,
                     },
                 }
             )

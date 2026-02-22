@@ -7,7 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from desloppify.languages.typescript.detectors.knip_adapter import detect_with_knip
-from desloppify.utils import c, print_table, rel
+from desloppify.utils import colorize, print_table, rel
 
 
 def detect_dead_exports(path: Path) -> tuple[list[dict], int]:
@@ -20,21 +20,21 @@ def detect_dead_exports(path: Path) -> tuple[list[dict], int]:
 
 
 def cmd_exports(args: argparse.Namespace) -> None:
-    print(c("Scanning exports via Knip...", "dim"), file=sys.stderr)
+    print(colorize("Scanning exports via Knip...", "dim"), file=sys.stderr)
     entries, _ = detect_dead_exports(Path(args.path))
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
 
     if not entries:
-        print(c("No dead exports found.", "green"))
+        print(colorize("No dead exports found.", "green"))
         return
 
     by_file: dict[str, list] = defaultdict(list)
     for e in entries:
         by_file[e["file"]].append(e)
 
-    print(c(f"\nDead exports: {len(entries)} across {len(by_file)} files\n", "bold"))
+    print(colorize(f"\nDead exports: {len(entries)} across {len(by_file)} files\n", "bold"))
 
     sorted_files = sorted(by_file.items(), key=lambda x: -len(x[1]))
     rows = []

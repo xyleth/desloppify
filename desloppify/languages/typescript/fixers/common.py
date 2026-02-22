@@ -7,7 +7,7 @@ from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.detectors._smell_helpers import scan_code
-from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
+from desloppify.utils import PROJECT_ROOT, colorize, rel, safe_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ def apply_fixer(
                 results.append(changed)
         except (OSError, UnicodeDecodeError) as ex:
             skipped_files.append((filepath, str(ex)))
-            print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
+            print(colorize(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
 
     if skipped_files:
         log_best_effort_failure(

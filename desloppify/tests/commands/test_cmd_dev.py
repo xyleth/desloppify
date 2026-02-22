@@ -15,7 +15,6 @@ REQUIRED_SCAFFOLD_PATHS = [
     "phases.py",
     "move.py",
     "review.py",
-    "review_data/per_file_dimensions.override.json",
     "review_data/holistic_dimensions.override.json",
     "test_coverage.py",
     "detectors/__init__.py",

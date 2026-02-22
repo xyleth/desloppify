@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_project_name(project_root: Path) -> str:
@@ -24,8 +27,8 @@ def resolve_project_name(project_root: Path) -> str:
         subprocess.CalledProcessError,
         FileNotFoundError,
         subprocess.TimeoutExpired,
-    ):
-        pass
+    ) as exc:
+        logger.debug("gh repo view failed, falling back to git remote: %s", exc)
 
     try:
         url = subprocess.check_output(
@@ -58,8 +61,8 @@ def resolve_package_version(
     """Resolve package version from installed metadata or local pyproject."""
     try:
         return version_getter("desloppify")
-    except package_not_found_error:
-        pass
+    except package_not_found_error as exc:
+        logger.debug("Package metadata lookup failed, trying pyproject.toml: %s", exc)
 
     pyproject_path = project_root / "pyproject.toml"
     try:
@@ -67,7 +70,7 @@ def resolve_package_version(
         match = re.search(r'^\s*version\s*=\s*"([^"]+)"\s*$', text, re.MULTILINE)
         if match:
             return match.group(1)
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to read pyproject.toml for version: %s", exc)
 
     return "unknown"

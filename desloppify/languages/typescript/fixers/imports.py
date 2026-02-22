@@ -5,7 +5,6 @@ from collections import defaultdict
 
 from desloppify.languages.typescript.fixers.common import (
     _collect_import_statement,
-    _is_import_complete,
     apply_fixer,
 )
 

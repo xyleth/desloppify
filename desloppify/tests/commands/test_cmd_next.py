@@ -377,7 +377,7 @@ class TestCmdNextOutput:
         cmd_next(_args())
         out = capsys.readouterr().out
         assert "Subjective integrity gap:" in out
-        assert "Priority: `desloppify review --prepare --holistic --refresh`" in out
+        assert "Priority: `desloppify review --prepare`" in out
         assert "Unassessed (0% placeholder): High Elegance" in out
 
     def test_holistic_subjective_signal_is_called_out(self, monkeypatch, capsys):
@@ -556,7 +556,7 @@ class TestCmdNextOutput:
         out = capsys.readouterr().out
         assert "were reset to 0.0 this scan" in out
         assert "Anti-gaming safeguard applied" in out
-        assert "review --prepare --refresh --dimensions" in out
+        assert "review --prepare --dimensions" in out
         assert "naming_quality" in out
         assert "logic_clarity" in out
 
@@ -648,7 +648,7 @@ class TestLowSubjectiveDimensions:
                 "detectors": {"subjective_assessment": {}},
             },
         }
-        low = _low_subjective_dimensions(dim_scores, threshold=95.0)
+        low = _low_subjective_dimensions({"dimension_scores": dim_scores}, dim_scores, threshold=95.0)
         assert low == [
             ("Custom Subjective", 91.0, 1),
             ("Naming Quality", 94.0, 2),

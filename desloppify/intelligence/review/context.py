@@ -6,8 +6,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from desloppify.intelligence.review.context_internal.models import ReviewContext
-from desloppify.intelligence.review.context_internal.patterns import (
+from desloppify.intelligence.review._context.models import ReviewContext
+from desloppify.intelligence.review._context.patterns import (
     CLASS_NAME_RE,
     ERROR_PATTERNS,
     FUNC_NAME_RE,

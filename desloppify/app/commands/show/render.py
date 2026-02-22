@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import defaultdict
 
 from desloppify.app.commands.helpers.rendering import print_ranked_actions
@@ -23,7 +24,7 @@ def write_show_output_file(output_file: str, payload: dict, surfaced_count: int)
         print(colorize(f"Wrote {surfaced_count} findings to {output_file}", "green"))
     except OSError as exc:
         payload["output_error"] = str(exc)
-        print(colorize(f"Could not write to {output_file}: {exc}", "red"))
+        print(colorize(f"Could not write to {output_file}: {exc}", "red"), file=sys.stderr)
         return False
     return True
 

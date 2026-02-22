@@ -44,7 +44,8 @@ def cmd_detect(args: argparse.Namespace) -> None:
         print(
             colorize(
                 f"No language specified. Use --lang <name> (available: {langs}).", "red"
-            )
+            ),
+            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -52,9 +53,10 @@ def cmd_detect(args: argparse.Namespace) -> None:
     detector = _resolve_detector_key(detector_input, lang_cfg.detect_commands)
     if detector is None:
         print(
-            colorize(f"Unknown detector for {lang_cfg.name}: {detector_input}", "red")
+            colorize(f"Unknown detector for {lang_cfg.name}: {detector_input}", "red"),
+            file=sys.stderr,
         )
-        print(f"  Available: {', '.join(sorted(lang_cfg.detect_commands))}")
+        print(f"  Available: {', '.join(sorted(lang_cfg.detect_commands))}", file=sys.stderr)
         sys.exit(1)
 
     # Set default thresholds for detectors that expect them
@@ -82,5 +84,6 @@ def cmd_detect(args: argparse.Namespace) -> None:
     if not getattr(args, "json", False):
         scan_path = getattr(args, "path", ".") or "."
         print(
-            colorize(f"\n  Next command: `desloppify scan --path {scan_path}`", "dim")
+            colorize(f"\n  Next command: `desloppify scan --path {scan_path}`", "dim"),
+            file=sys.stderr,
         )

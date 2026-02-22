@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence.review.context_internal.models import (
+from desloppify.intelligence.review._context.models import (
     HolisticContext,
     ReviewContext,
 )

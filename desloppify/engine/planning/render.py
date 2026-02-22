@@ -12,7 +12,7 @@ from desloppify.engine.planning.types import PlanState
 
 def _plan_header(state: PlanState, stats: dict) -> list[str]:
     """Build the plan header: title, score line, and codebase metrics."""
-    schema_mod = importlib.import_module("desloppify.engine.state_internal.schema")
+    schema_mod = importlib.import_module("desloppify.engine._state.schema")
 
     overall_score = schema_mod.get_overall_score(state)
     objective_score = schema_mod.get_objective_score(state)
@@ -175,7 +175,7 @@ def _plan_dimension_table(state: PlanState) -> list[str]:
 
 def _plan_tier_sections(findings: dict, *, state: PlanState | None = None) -> list[str]:
     """Build per-tier sections from the shared work-queue backend."""
-    work_queue_mod = importlib.import_module("desloppify.engine.work_queue_internal.core")
+    work_queue_mod = importlib.import_module("desloppify.engine._work_queue.core")
 
     queue_state: PlanState | dict = state or {"findings": findings}
     scan_path = state.get("scan_path") if state else None

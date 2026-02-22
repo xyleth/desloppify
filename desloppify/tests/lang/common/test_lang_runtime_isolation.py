@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.engine.planning.scan import PlanScanOptions, generate_findings
-from desloppify.languages.framework.base.types import DetectorPhase
-from desloppify.languages.framework.runtime import (
+from desloppify.languages._framework.base.types import DetectorPhase
+from desloppify.languages._framework.runtime import (
     LangRun,
     LangRunOverrides,
     make_lang_run,

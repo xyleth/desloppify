@@ -1,8 +1,8 @@
-"""Direct tests for state_internal.scoring helpers."""
+"""Direct tests for _state.scoring helpers."""
 
 from __future__ import annotations
 
-import desloppify.engine.state_internal.scoring as scoring_mod
+import desloppify.engine._state.scoring as scoring_mod
 
 
 def test_count_findings_tracks_status_and_tiers():
@@ -85,7 +85,7 @@ def test_update_objective_health_resets_two_target_matched_subjective_dimensions
     dim_scores = state["dimension_scores"]
     assert dim_scores["Naming Quality"]["score"] == 0.0
     assert dim_scores["Logic Clarity"]["score"] == 0.0
-    assert dim_scores["AI Generated Debt"]["score"] == 100.0
+    assert dim_scores["AI Generated Debt"]["score"] == 90.0
     assert (
         dim_scores["AI Generated Debt"]["detectors"]["subjective_assessment"][
             "assessment_score"
@@ -116,7 +116,7 @@ def test_update_objective_health_warns_single_target_matched_subjective_dimensio
     )
 
     dim_scores = state["dimension_scores"]
-    assert dim_scores["Naming Quality"]["score"] == 100.0
+    assert dim_scores["Naming Quality"]["score"] == 95.0
     assert (
         dim_scores["Naming Quality"]["detectors"]["subjective_assessment"][
             "assessment_score"

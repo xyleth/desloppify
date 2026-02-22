@@ -1,6 +1,6 @@
 """Tests for desloppify.languages.typescript.fixers — all fixer modules.
 
-Covers: __init__, common, imports, vars, logs, params, exports, if_chain, useeffect.
+Covers: __init__, common, imports, vars, logs, params, if_chain, useeffect.
 """
 
 import textwrap
@@ -12,7 +12,6 @@ from desloppify.languages.typescript.fixers.common import (
     extract_body_between_braces,
     find_balanced_end,
 )
-from desloppify.languages.typescript.fixers.exports import fix_dead_exports
 from desloppify.languages.typescript.fixers.if_chain import (
     _find_if_chain_end,
     fix_empty_if_chain,
@@ -39,7 +38,6 @@ class TestFixerInit:
         expected = [
             "fix_debug_logs",
             "fix_unused_imports",
-            "fix_dead_exports",
             "fix_unused_vars",
             "fix_unused_params",
             "fix_dead_useeffect",
@@ -52,7 +50,6 @@ class TestFixerInit:
         for fn in [
             fix_debug_logs,
             fix_unused_imports,
-            fix_dead_exports,
             fix_unused_vars,
             fix_unused_params,
             fix_dead_useeffect,
@@ -645,91 +642,6 @@ class TestFixUnusedParams:
             },
         ]
         _ = fix_unused_params(entries, dry_run=True)
-        assert ts_file.read_text() == original
-
-
-# =====================================================================
-# exports.py — fix_dead_exports
-# =====================================================================
-
-
-class TestFixDeadExports:
-    """Tests for fix_dead_exports()."""
-
-    def test_remove_export_keyword(self, tmp_path):
-        """export keyword is removed from a declaration, keeping the rest."""
-        ts_file = tmp_path / "lib.ts"
-        ts_file.write_text(
-            textwrap.dedent("""\
-            export function helper() {
-              return 1;
-            }
-        """)
-        )
-        entries = [{"file": str(ts_file), "line": 1, "name": "helper"}]
-        results = fix_dead_exports(entries, dry_run=False)
-        assert len(results) == 1
-        content = ts_file.read_text()
-        assert content.startswith("function helper()")
-        assert "export" not in content
-
-    def test_remove_export_const(self, tmp_path):
-        """export keyword is removed from const declaration."""
-        ts_file = tmp_path / "config.ts"
-        ts_file.write_text("export const VALUE = 42;\n")
-        entries = [{"file": str(ts_file), "line": 1, "name": "VALUE"}]
-        _ = fix_dead_exports(entries, dry_run=False)
-        content = ts_file.read_text()
-        assert content.strip() == "const VALUE = 42;"
-
-    def test_remove_export_type(self, tmp_path):
-        """export keyword is removed from a type declaration."""
-        ts_file = tmp_path / "types.ts"
-        ts_file.write_text("export type Foo = string;\n")
-        entries = [{"file": str(ts_file), "line": 1, "name": "Foo"}]
-        _ = fix_dead_exports(entries, dry_run=False)
-        content = ts_file.read_text()
-        assert content.strip() == "type Foo = string;"
-
-    def test_remove_export_interface(self, tmp_path):
-        """export keyword is removed from an interface declaration."""
-        ts_file = tmp_path / "types.ts"
-        ts_file.write_text("export interface Bar { x: number; }\n")
-        entries = [{"file": str(ts_file), "line": 1, "name": "Bar"}]
-        _ = fix_dead_exports(entries, dry_run=False)
-        content = ts_file.read_text()
-        assert content.strip() == "interface Bar { x: number; }"
-
-    def test_remove_named_export(self, tmp_path):
-        """An export { name } statement is removed entirely when all names are dead."""
-        ts_file = tmp_path / "index.ts"
-        ts_file.write_text(
-            textwrap.dedent("""\
-            const a = 1;
-            export { a };
-        """)
-        )
-        entries = [{"file": str(ts_file), "line": 2, "name": "a"}]
-        _ = fix_dead_exports(entries, dry_run=False)
-        content = ts_file.read_text()
-        assert "export" not in content
-
-    def test_lines_removed_is_zero(self, tmp_path):
-        """Dead export removal never removes lines (just the keyword)."""
-        ts_file = tmp_path / "lib.ts"
-        ts_file.write_text("export const X = 1;\n")
-        entries = [{"file": str(ts_file), "line": 1, "name": "X"}]
-        results = fix_dead_exports(entries, dry_run=False)
-        assert results[0]["lines_removed"] == 0
-
-    def test_dry_run(self, tmp_path):
-        """dry_run=True does not modify the file."""
-        ts_file = tmp_path / "lib.ts"
-        original = "export function helper() { return 1; }\n"
-        ts_file.write_text(original)
-        entries = [{"file": str(ts_file), "line": 1, "name": "helper"}]
-        results = fix_dead_exports(entries, dry_run=True)
-        assert len(results) == 1
         assert ts_file.read_text() == original
 
 

@@ -6,30 +6,13 @@ import re
 from pathlib import Path
 
 from desloppify.engine.detectors.base import ComplexitySignal, GodRule
-from desloppify.engine.detectors.complexity import detect_complexity
-from desloppify.engine.detectors.flat_dirs import detect_flat_dirs
-from desloppify.engine.detectors.gods import detect_gods
-from desloppify.engine.detectors.graph import detect_cycles
-from desloppify.engine.detectors.large import detect_large_files
-from desloppify.engine.detectors.orphaned import (
-    OrphanedDetectionOptions,
-    detect_orphaned_files,
+from desloppify.languages._framework.base.shared_phases import (
+    run_coupling_phase,
+    run_structural_phase,
 )
-from desloppify.engine.detectors.single_use import detect_single_use_abstractions
-from desloppify.engine.policy.zones import adjust_potential, filter_entries
 from desloppify.languages.csharp.detectors.deps import build_dep_graph
 from desloppify.languages.csharp.extractors import extract_csharp_classes
-from desloppify.languages.framework.base.structural import (
-    add_structural_signal,
-    merge_structural_signals,
-)
-from desloppify.languages.framework.base.types import LangConfig
-from desloppify.languages.framework.finding_factories import (
-    make_cycle_findings,
-    make_orphaned_findings,
-    make_single_use_findings,
-)
-from desloppify.state import make_finding
+from desloppify.languages._framework.runtime import LangRun
 from desloppify.utils import log, rel
 
 
@@ -122,7 +105,7 @@ CSHARP_GOD_RULES = [
 ]
 
 
-def _runtime_setting(lang: LangConfig, key: str, default: int) -> int:
+def _runtime_setting(lang: LangRun, key: str, default: int) -> int:
     """Read language setting from runtime context."""
     getter = getattr(lang, "runtime_setting", None)
     if callable(getter):
@@ -134,7 +117,7 @@ def _runtime_setting(lang: LangConfig, key: str, default: int) -> int:
 
 
 def _corroboration_signals_for_csharp(
-    entry: dict, lang: LangConfig
+    entry: dict, lang: LangRun
 ) -> tuple[list[str], int, int]:
     """Return corroboration signals plus complexity/import counts for confidence gating."""
     filepath = entry.get("file", "")
@@ -161,7 +144,7 @@ def _corroboration_signals_for_csharp(
 
 
 def _apply_csharp_actionability_gates(
-    findings: list[dict], entries: list[dict], lang: LangConfig
+    findings: list[dict], entries: list[dict], lang: LangRun
 ) -> None:
     """Downgrade actionability unless multiple independent signals corroborate."""
     min_signals = max(1, _runtime_setting(lang, "corroboration_min_signals", 2))
@@ -186,108 +169,31 @@ def _apply_csharp_actionability_gates(
 
 
 def _phase_structural(
-    path: Path, lang: LangConfig
+    path: Path, lang: LangRun
 ) -> tuple[list[dict], dict[str, int]]:
     """Merge large + complexity + god classes into structural findings."""
-    structural: dict[str, dict] = {}
-
-    large_entries, file_count = detect_large_files(
-        path, file_finder=lang.file_finder, threshold=lang.large_threshold
-    )
-    for e in large_entries:
-        add_structural_signal(
-            structural, e["file"], f"large ({e['loc']} LOC)", {"loc": e["loc"]}
-        )
-
-    complexity_entries, _ = detect_complexity(
+    return run_structural_phase(
         path,
-        signals=CSHARP_COMPLEXITY_SIGNALS,
-        file_finder=lang.file_finder,
-        threshold=lang.complexity_threshold,
-        min_loc=40,
+        lang,
+        complexity_signals=CSHARP_COMPLEXITY_SIGNALS,
+        log_fn=log,
+        god_rules=CSHARP_GOD_RULES,
+        god_extractor_fn=extract_csharp_classes,
     )
-    for e in complexity_entries:
-        add_structural_signal(
-            structural,
-            e["file"],
-            f"complexity score {e['score']}",
-            {"complexity_score": e["score"], "complexity_signals": e["signals"]},
-        )
-        lang.complexity_map[e["file"]] = e["score"]
-
-    god_entries, _ = detect_gods(
-        extract_csharp_classes(path), CSHARP_GOD_RULES, min_reasons=2
-    )
-    for e in god_entries:
-        add_structural_signal(structural, e["file"], e["signal_text"], e["detail"])
-
-    results = merge_structural_signals(structural, log)
-
-    flat_entries, dir_count = detect_flat_dirs(path, file_finder=lang.file_finder)
-    for e in flat_entries:
-        results.append(
-            make_finding(
-                "flat_dirs",
-                e["directory"],
-                "",
-                tier=3,
-                confidence="medium",
-                summary=f"Flat directory: {e['file_count']} files — consider grouping by domain",
-                detail={"file_count": e["file_count"]},
-            )
-        )
-    if flat_entries:
-        log(f"         flat dirs: {len(flat_entries)} directories with 20+ files")
-
-    potentials = {
-        "structural": adjust_potential(lang.zone_map, file_count),
-        "flat_dirs": dir_count,
-    }
-    return results, potentials
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_coupling(path: Path, lang: LangRun) -> tuple[list[dict], dict[str, int]]:
     """Run coupling-oriented detectors on the C# dependency graph."""
     runtime_option = getattr(lang, "runtime_option", None)
     roslyn_cmd = runtime_option("roslyn_cmd", "") if callable(runtime_option) else ""
-    graph = build_dep_graph(path, roslyn_cmd=(roslyn_cmd or None))
-    lang.dep_graph = graph
-    zm = lang.zone_map
 
-    results: list[dict] = []
+    def _build(p):
+        return build_dep_graph(p, roslyn_cmd=(roslyn_cmd or None))
 
-    single_entries, single_candidates = detect_single_use_abstractions(
-        path, graph, barrel_names=lang.barrel_names
-    )
-    single_entries = filter_entries(zm, single_entries, "single_use")
-    single_findings = make_single_use_findings(
-        single_entries, lang.get_area, stderr_fn=log
-    )
-    _apply_csharp_actionability_gates(single_findings, single_entries, lang)
-    results.extend(single_findings)
-
-    cycle_entries, _ = detect_cycles(graph)
-    cycle_entries = filter_entries(zm, cycle_entries, "cycles", file_key="files")
-    results.extend(make_cycle_findings(cycle_entries, log))
-
-    orphan_entries, total_graph_files = detect_orphaned_files(
+    return run_coupling_phase(
         path,
-        graph,
-        extensions=lang.extensions,
-        options=OrphanedDetectionOptions(
-            extra_entry_patterns=lang.entry_patterns,
-            extra_barrel_names=lang.barrel_names,
-        ),
+        lang,
+        build_dep_graph_fn=_build,
+        log_fn=log,
+        post_process_fn=_apply_csharp_actionability_gates,
     )
-    orphan_entries = filter_entries(zm, orphan_entries, "orphaned")
-    orphan_findings = make_orphaned_findings(orphan_entries, log)
-    _apply_csharp_actionability_gates(orphan_findings, orphan_entries, lang)
-    results.extend(orphan_findings)
-
-    log(f"         -> {len(results)} coupling/structural findings total")
-    potentials = {
-        "single_use": adjust_potential(zm, single_candidates),
-        "cycles": adjust_potential(zm, total_graph_files),
-        "orphaned": adjust_potential(zm, total_graph_files),
-    }
-    return results, potentials

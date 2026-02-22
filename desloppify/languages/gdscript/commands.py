@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import argparse
 
-from desloppify.languages._shared.scaffold_detect_commands import (
+from desloppify.languages._framework.commands_base import (
     make_cmd_cycles,
     make_cmd_deps,
     make_cmd_dupes,
     make_cmd_orphaned,
 )
-from desloppify.languages.framework.commands_base import (
+from desloppify.languages._framework.commands_base import (
+    build_standard_detect_registry,
     make_cmd_complexity,
     make_cmd_large,
-    make_get_detect_commands,
 )
 from desloppify.languages.gdscript.detectors.deps import build_dep_graph
 from desloppify.languages.gdscript.extractors import (
@@ -66,11 +66,13 @@ def cmd_dupes(args: argparse.Namespace) -> None:
     _cmd_dupes_impl(args)
 
 
-get_detect_commands = make_get_detect_commands(
-    cmd_deps=cmd_deps,
-    cmd_cycles=cmd_cycles,
-    cmd_orphaned=cmd_orphaned,
-    cmd_dupes=cmd_dupes,
-    cmd_large=cmd_large,
-    cmd_complexity=cmd_complexity,
-)
+def get_detect_commands() -> dict[str, object]:
+    """Return the standard detect command registry for GDScript."""
+    return build_standard_detect_registry(
+        cmd_deps=cmd_deps,
+        cmd_cycles=cmd_cycles,
+        cmd_orphaned=cmd_orphaned,
+        cmd_dupes=cmd_dupes,
+        cmd_large=cmd_large,
+        cmd_complexity=cmd_complexity,
+    )

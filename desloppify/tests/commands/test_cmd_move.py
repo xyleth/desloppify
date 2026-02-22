@@ -76,7 +76,7 @@ class TestDetectLangFromExt:
         assert detect_lang_from_ext("foo.cs") == "csharp"
 
     def test_unknown_ext(self):
-        assert detect_lang_from_ext("foo.rb") is None
+        assert detect_lang_from_ext("foo.xyz") is None
 
     def test_no_ext(self):
         assert detect_lang_from_ext("Makefile") is None
@@ -109,8 +109,8 @@ class TestDetectLangFromDir:
         assert detect_lang_from_dir(str(tmp_path)) is None
 
     def test_no_source_files(self, tmp_path):
-        (tmp_path / "readme.md").write_text("")
-        (tmp_path / "config.yml").write_text("")
+        (tmp_path / "readme.txt").write_text("")
+        (tmp_path / "config.toml").write_text("")
         assert detect_lang_from_dir(str(tmp_path)) is None
 
     def test_nested_files(self, tmp_path):

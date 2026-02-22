@@ -3,7 +3,7 @@
 This directory contains two things:
 
 1. Language plugins (`python/`, `typescript/`, `csharp/`, `dart/`, `gdscript/`)
-2. Shared plugin framework internals (`framework/` and `_shared/`)
+2. Shared plugin framework internals (`framework/`)
 
 ## Layout
 
@@ -23,11 +23,14 @@ languages/
 │   ├── commands_base.py      # shared detect-command factories
 │   ├── finding_factories.py  # shared finding normalization factories
 │   ├── facade_common.py      # shared facade detector helpers
+│   ├── treesitter/           # Tree-sitter integration (optional)
+│   │   ├── phases.py         # tree-sitter phase factories
+│   │   └── ...               # specs, extractors, smells, cohesion
+│   ├── review_data/          # Shared review dimension JSON payloads
 │   ├── contract_validation.py
 │   ├── structure_validation.py
-│   ├── policy.py
+│   ├── policy.py             # policy constants + holistic review dimensions
 │   └── registry_state.py
-├── _shared/                  # Shared static assets/templates for language plugins
 └── <language>/               # One folder per language plugin
 ```
 
@@ -70,11 +73,11 @@ Registration/validation fails when the contract is incomplete.
 
 ## Design Rules
 
-- Import direction: `languages/<name>/` -> `engine/detectors/` and `languages/framework/*`
+- Import direction: `languages/<name>/` -> `engine/detectors/` and `languages/_framework/*`
 - Do not import language-specific modules from `engine/detectors/*`
 - Keep language plugin code in its language folder
-- Keep reusable cross-language framework code in `languages/framework/`
-- Keep shared static prompts/templates in `languages/_shared/`
+- Keep reusable cross-language framework code in `languages/_framework/`
+- Keep shared static data (review payloads, etc.) in `languages/_framework/`
 
 ## Test Command
 
@@ -92,8 +95,8 @@ scoring/display/reset wiring is automatic.
 
 Where to add:
 
-- Global per-file dimension: `desloppify/languages/_shared/review_data/per_file_dimensions.json`
-- Global holistic dimension: `desloppify/languages/_shared/review_data/holistic_dimensions.json`
+- Global per-file dimension: `desloppify/languages/_framework/review_data/per_file_dimensions.json`
+- Global holistic dimension: `desloppify/languages/_framework/review_data/holistic_dimensions.json`
 - Language-specific dimension override:
   `desloppify/languages/<lang>/review_data/per_file_dimensions.override.json`
   or `desloppify/languages/<lang>/review_data/holistic_dimensions.override.json`

@@ -12,7 +12,7 @@ from desloppify.app.commands.fix.apply_flow import (
 from desloppify.app.commands.fix.cmd import (
     cmd_fix,
 )
-from desloppify.languages.framework.base.types import FixerConfig, FixResult
+from desloppify.languages._framework.base.types import FixerConfig, FixResult
 
 # ---------------------------------------------------------------------------
 # Module-level sanity

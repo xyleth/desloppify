@@ -65,7 +65,7 @@ _P_LANG = "desloppify.app.commands.fix.review_flow.resolve_lang"
 _P_LOAD_STATE = "desloppify.app.commands.fix.review_flow._load_state"
 
 _P_PREP = "desloppify.intelligence.review.prepare_review"
-_P_SETUP = "desloppify.app.commands.fix.review_flow.review_single_mod._setup_lang"
+_P_SETUP = "desloppify.app.commands.fix.review_flow.review_runtime_mod.setup_lang_concrete"
 _P_WQ = "desloppify.app.commands.fix.review_flow.write_query"
 
 
@@ -128,7 +128,7 @@ class TestFixReviewZeroCandidates:
             _cmd_fix_review(args)
         out = capsys.readouterr().out
         assert "Subjective integrity still needs refresh" in out
-        assert "review --prepare --holistic --refresh" in out
+        assert "review --prepare" in out
 
 
 class TestFixReviewDimensionPrompts:

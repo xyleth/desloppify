@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
+
 from desloppify.app.commands.helpers.query import QUERY_FILE
 from desloppify.app.commands.helpers.score import target_strict_score_from_config
 from desloppify.app.commands.scan.scan_artifacts import (
     build_scan_query_payload,
     emit_scorecard_badge,
 )
-from desloppify.app.commands.scan.scan_helpers import (
+from desloppify.app.commands.scan.scan_helpers import (  # noqa: F401 (re-exports)
     _audit_excluded_dirs,
     _collect_codebase_metrics,
     _effective_include_slow,
@@ -18,21 +20,22 @@ from desloppify.app.commands.scan.scan_helpers import (
     _warn_explicit_lang_with_no_files,
 )
 from desloppify.app.commands.scan.scan_reporting_analysis import (
-    _show_post_scan_analysis,
-    _show_score_integrity,
+    show_post_scan_analysis,
+    show_score_integrity,
 )
 from desloppify.app.commands.scan.scan_reporting_dimensions import (
-    _show_dimension_deltas,
-    _show_low_dimension_hints,
-    _show_score_model_breakdown,
-    _show_scorecard_subjective_measures,
-    _show_subjective_paths,
+    show_dimension_deltas,
+    show_low_dimension_hints,
+    show_score_model_breakdown,
+    show_scorecard_subjective_measures,
+    show_subjective_paths_section,
 )
 from desloppify.app.commands.scan.scan_reporting_llm import _print_llm_summary
-from desloppify.app.commands.scan.scan_reporting_summary import (
-    _show_diff_summary,
-    _show_score_delta,
-    _show_strict_target_progress,
+from desloppify.app.commands.scan.scan_reporting_summary import (  # noqa: F401
+    show_concern_count,
+    show_diff_summary,
+    show_score_delta,
+    show_strict_target_progress,
 )
 from desloppify.app.commands.scan.scan_workflow import (
     merge_scan_results,
@@ -81,7 +84,7 @@ def _show_scan_visibility(noise, effective_include_slow: bool) -> None:
         )
 
 
-def cmd_scan(args) -> None:
+def cmd_scan(args: argparse.Namespace) -> None:
     """Run all detectors, update persistent state, show diff."""
     runtime = prepare_scan_runtime(args)
     _print_scan_header(runtime.lang_label)
@@ -100,8 +103,8 @@ def cmd_scan(args) -> None:
 
     noise = resolve_noise_snapshot(runtime.state, runtime.config)
 
-    _show_diff_summary(merge.diff)
-    _show_score_delta(
+    show_diff_summary(merge.diff)
+    show_score_delta(
         runtime.state,
         merge.prev_overall,
         merge.prev_objective,
@@ -109,25 +112,26 @@ def cmd_scan(args) -> None:
         merge.prev_verified,
     )
     _show_scan_visibility(noise, runtime.effective_include_slow)
-    _show_scorecard_subjective_measures(runtime.state)
-    _show_score_model_breakdown(runtime.state)
+    show_scorecard_subjective_measures(runtime.state)
+    show_score_model_breakdown(runtime.state)
 
     target_value = target_strict_score_from_config(runtime.config, fallback=95.0)
 
     new_dim_scores = runtime.state.get("dimension_scores", {})
     if new_dim_scores and merge.prev_dim_scores:
-        _show_dimension_deltas(merge.prev_dim_scores, new_dim_scores)
+        show_dimension_deltas(merge.prev_dim_scores, new_dim_scores)
     if new_dim_scores:
-        _show_low_dimension_hints(new_dim_scores)
-        _show_subjective_paths(
+        show_low_dimension_hints(new_dim_scores)
+        show_subjective_paths_section(
             runtime.state,
             new_dim_scores,
             threshold=target_value,
             target_strict_score=target_value,
         )
 
-    _show_score_integrity(runtime.state, merge.diff)
-    warnings, narrative = _show_post_scan_analysis(
+    show_score_integrity(runtime.state, merge.diff)
+    show_concern_count(runtime.state, lang_name=runtime.lang.name if runtime.lang else None)
+    warnings, narrative = show_post_scan_analysis(
         merge.diff,
         runtime.state,
         runtime.lang,
@@ -154,16 +158,5 @@ def cmd_scan(args) -> None:
 
 
 __all__ = [
-    "_audit_excluded_dirs",
-    "_collect_codebase_metrics",
-    "_effective_include_slow",
-    "_format_delta",
-    "_resolve_scan_profile",
-    "_show_diff_summary",
-    "_show_dimension_deltas",
-    "_show_post_scan_analysis",
-    "_show_score_delta",
-    "_show_strict_target_progress",
-    "_warn_explicit_lang_with_no_files",
     "cmd_scan",
 ]

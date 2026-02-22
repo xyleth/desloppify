@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
-from desloppify.languages.framework.contract_validation import validate_lang_contract
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
+from desloppify.languages._framework.contract_validation import validate_lang_contract
 
 
 def _good_config(name: str = "dummy") -> LangConfig:

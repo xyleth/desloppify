@@ -5,13 +5,13 @@ from __future__ import annotations
 from desloppify import scoring as scoring_mod
 from desloppify import utils as utils_mod
 from desloppify.app.commands.helpers.subjective import print_subjective_followup
-from desloppify.app.commands.scan.scan_reporting_subjective_output import (
+from desloppify.app.commands.scan.scan_reporting_subjective import (
     build_subjective_followup,
 )
 from desloppify.app.output.scorecard_parts.projection import (
     scorecard_subjective_entries,
 )
-from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE, group_queue_items
+from desloppify.engine._work_queue.core import ATTEST_EXAMPLE, group_queue_items
 from desloppify.intelligence.integrity.review import (
     is_holistic_subjective_finding,
     subjective_review_open_breakdown,
@@ -21,20 +21,10 @@ from desloppify.utils import colorize
 
 
 def scorecard_subjective(
-    state_or_dim_scores: dict,
-    dim_scores: dict | None = None,
+    state: dict,
+    dim_scores: dict,
 ) -> list[dict]:
-    """Return scorecard-aligned subjective entries for current dimension scores.
-
-    Supports two calling conventions:
-    - scorecard_subjective(state, dim_scores): full state + explicit dim_scores
-    - scorecard_subjective(dim_scores): shorthand when only dim_scores are available;
-      a synthetic state dict is fabricated from dim_scores for compatibility.
-    """
-    state = state_or_dim_scores
-    if dim_scores is None:
-        dim_scores = state_or_dim_scores
-        state = {"dimension_scores": dim_scores}
+    """Return scorecard-aligned subjective entries for current dimension scores."""
     if not dim_scores:
         return []
     return scorecard_subjective_entries(
@@ -130,6 +120,8 @@ def _render_item(
         print(f"  Category: {detail['category']}")
     if detail.get("importers") is not None:
         print(f"  Active importers: {detail['importers']}")
+    if detail.get("suggestion"):
+        print(colorize(f"\n  Suggestion: {detail['suggestion']}", "dim"))
 
     target_line = detail.get("line") or (detail.get("lines", [None]) or [None])[0]
     if target_line and item.get("file") not in (".", ""):
@@ -242,7 +234,7 @@ def render_single_item_resolution_hint(items: list[dict]) -> None:
         )
         print(f"    {primary}")
         if is_holistic_subjective_finding(item):
-            print("    desloppify review --prepare --holistic --refresh")
+            print("    desloppify review --prepare")
         return
 
     primary = item.get("primary_command", "")
@@ -314,7 +306,7 @@ def render_followup_nudges(
         print(colorize(f"\n  Subjective integrity gap: {gap_label}", "yellow"))
         print(
             colorize(
-                "  Priority: `desloppify review --prepare --holistic --refresh`", "dim"
+                "  Priority: `desloppify review --prepare`", "dim"
             )
         )
         print(

@@ -31,7 +31,7 @@
       "file": ".",
       "tier": 4,
       "confidence": "low",
-      "summary": "No holistic codebase review on record \u2014 run `desloppify review --prepare --holistic`",
+      "summary": "No holistic codebase review on record \u2014 run `desloppify review --prepare`",
       "detail": {
         "reason": "unreviewed"
       },

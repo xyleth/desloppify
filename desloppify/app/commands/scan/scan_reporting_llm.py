@@ -10,7 +10,7 @@ from desloppify import scoring as scoring_mod
 from desloppify import state as state_mod
 from desloppify.app.output.scorecard_parts import projection as scorecard_projection_mod
 from desloppify.core import registry as registry_mod
-from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE
+from desloppify.engine._work_queue.helpers import ATTEST_EXAMPLE
 from desloppify.utils import PROJECT_ROOT
 
 
@@ -18,15 +18,9 @@ def _is_agent_environment() -> bool:
     return bool(os.environ.get("CLAUDE_CODE") or os.environ.get("DESLOPPIFY_AGENT"))
 
 
-def _load_scores(
-    state: dict,
-) -> tuple[float | None, float | None, float | None, float | None]:
-    return (
-        state_mod.get_overall_score(state),
-        state_mod.get_objective_score(state),
-        state_mod.get_strict_score(state),
-        state_mod.get_verified_strict_score(state),
-    )
+def _load_scores(state: dict) -> state_mod.ScoreSnapshot:
+    """Load all four canonical scores from state."""
+    return state_mod.score_snapshot(state)
 
 
 def _print_score_lines(
@@ -222,13 +216,13 @@ def _print_llm_summary(
         return
 
     dim_scores = state.get("dimension_scores", {})
-    overall_score, objective_score, strict_score, verified_score = _load_scores(state)
+    scores = _load_scores(state)
 
     if (
-        overall_score is None
-        and objective_score is None
-        and strict_score is None
-        and verified_score is None
+        scores.overall is None
+        and scores.objective is None
+        and scores.strict is None
+        and scores.verified is None
         and not dim_scores
     ):
         return
@@ -241,17 +235,17 @@ def _print_llm_summary(
     print("The goal is to maximize strict scores. Never skip the scores.\n")
 
     _print_score_lines(
-        overall_score=overall_score,
-        objective_score=objective_score,
-        strict_score=strict_score,
-        verified_score=verified_score,
+        overall_score=scores.overall,
+        objective_score=scores.objective,
+        strict_score=scores.strict,
+        verified_score=scores.verified,
     )
     _print_dimension_table(state, dim_scores)
     _print_stats_summary(
         state,
         diff,
-        overall_score=overall_score,
-        strict_score=strict_score,
+        overall_score=scores.overall,
+        strict_score=scores.strict,
     )
     _print_workflow_guide()
     _print_narrative_status(narrative)

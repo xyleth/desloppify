@@ -10,7 +10,7 @@ from desloppify.engine.planning.core import generate_findings
 from desloppify.engine.planning.scan import PlanScanOptions
 from desloppify.languages.csharp import CSharpConfig
 from desloppify.languages.csharp.phases import _apply_csharp_actionability_gates
-from desloppify.languages.framework.runtime import LangRunOverrides, make_lang_run
+from desloppify.languages._framework.runtime import LangRunOverrides, make_lang_run
 
 
 def _signal_rich_area(filepath: str) -> str:

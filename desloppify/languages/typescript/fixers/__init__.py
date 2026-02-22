@@ -7,7 +7,6 @@ import importlib
 __all__ = [
     "fix_debug_logs",
     "fix_unused_imports",
-    "fix_dead_exports",
     "fix_unused_vars",
     "fix_unused_params",
     "fix_dead_useeffect",
@@ -17,7 +16,6 @@ __all__ = [
 _EXPORT_MODULES = {
     "fix_debug_logs": ".logs",
     "fix_unused_imports": ".imports",
-    "fix_dead_exports": ".exports",
     "fix_unused_vars": ".vars",
     "fix_unused_params": ".params",
     "fix_dead_useeffect": ".useeffect",

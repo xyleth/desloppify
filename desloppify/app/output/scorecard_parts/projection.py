@@ -109,6 +109,7 @@ def scorecard_subjective_entries(
 ) -> list[dict]:
     """Return scorecard-subjective entries with score/strict/placeholder metadata."""
     rows = scorecard_dimension_rows(state, dim_scores=dim_scores)
+    assessments = state.get("subjective_assessments") or {}
     subjective_display_names = {display.lower() for display in DISPLAY_NAMES.values()}
     subjective_display_names.update({"elegance", "elegance (combined)"})
 
@@ -133,6 +134,12 @@ def scorecard_subjective_entries(
                 and data.get("checks", 0) == 0
             )
         )
+        dim_key = assessment_meta.get("dimension_key", "")
+        stale = bool(
+            dim_key
+            and isinstance(assessments.get(dim_key), dict)
+            and assessments[dim_key].get("needs_review_refresh")
+        )
         entries.append(
             {
                 "name": name,
@@ -142,6 +149,8 @@ def scorecard_subjective_entries(
                 "issues": int(data.get("issues", 0) or 0),
                 "tier": int(data.get("tier", 4) or 4),
                 "placeholder": placeholder,
+                "stale": stale,
+                "dimension_key": dim_key,
                 "cli_keys": scorecard_dimension_cli_keys(name, data),
             }
         )

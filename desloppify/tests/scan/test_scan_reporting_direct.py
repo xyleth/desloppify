@@ -12,7 +12,7 @@ import desloppify.app.commands.scan.scan_reporting_summary as scan_reporting_sum
 
 
 def test_show_diff_summary_prints_changes_and_suspects(capsys):
-    scan_reporting_summary_mod._show_diff_summary(
+    scan_reporting_summary_mod.show_diff_summary(
         {
             "new": 2,
             "auto_resolved": 1,
@@ -35,7 +35,7 @@ def test_show_score_delta_handles_unavailable_scores(monkeypatch, capsys):
     monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: None)
     monkeypatch.setattr(state_mod, "get_verified_strict_score", lambda _state: None)
 
-    scan_reporting_summary_mod._show_score_delta(
+    scan_reporting_summary_mod.show_score_delta(
         state={"stats": {"open": 1, "total": 2}},
         prev_overall=80.0,
         prev_objective=80.0,
@@ -53,7 +53,7 @@ def test_show_score_delta_prints_scores_and_wontfix_gap(monkeypatch, capsys):
     monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 80.0)
     monkeypatch.setattr(state_mod, "get_verified_strict_score", lambda _state: 79.0)
 
-    scan_reporting_summary_mod._show_score_delta(
+    scan_reporting_summary_mod.show_score_delta(
         state={"stats": {"open": 4, "total": 10, "wontfix": 12}},
         prev_overall=85.0,
         prev_objective=85.0,
@@ -77,7 +77,7 @@ def test_show_score_delta_surfaces_subjective_integrity_penalty(monkeypatch, cap
     monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 89.0)
     monkeypatch.setattr(state_mod, "get_verified_strict_score", lambda _state: 88.0)
 
-    scan_reporting_summary_mod._show_score_delta(
+    scan_reporting_summary_mod.show_score_delta(
         state={
             "stats": {"open": 2, "total": 10, "wontfix": 0},
             "subjective_integrity": {
@@ -106,7 +106,7 @@ def test_show_score_delta_escalates_repeated_subjective_integrity_penalty(
     monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 89.0)
     monkeypatch.setattr(state_mod, "get_verified_strict_score", lambda _state: 88.0)
 
-    scan_reporting_summary_mod._show_score_delta(
+    scan_reporting_summary_mod.show_score_delta(
         state={
             "stats": {"open": 2, "total": 10, "wontfix": 0},
             "scan_history": [
@@ -161,7 +161,7 @@ def test_show_post_scan_analysis_surfaces_warnings_and_actions(monkeypatch, caps
         },
     )
 
-    warnings, narrative = scan_reporting_analysis_mod._show_post_scan_analysis(
+    warnings, narrative = scan_reporting_analysis_mod.show_post_scan_analysis(
         diff={
             "new": 12,
             "auto_resolved": 1,
@@ -209,14 +209,14 @@ def test_show_post_scan_analysis_flags_holistic_subjective_integrity(
         },
     )
 
-    scan_reporting_analysis_mod._show_post_scan_analysis(
+    scan_reporting_analysis_mod.show_post_scan_analysis(
         diff={"new": 0, "auto_resolved": 0, "reopened": 0, "chronic_reopeners": []},
         state={"findings": {}, "scan_path": ".", "review_cache": {"files": {}}},
         lang=SimpleNamespace(name="python"),
     )
     out = capsys.readouterr().out
     assert "Subjective integrity:" in out
-    assert "review --prepare --holistic --refresh" in out
+    assert "review --prepare" in out
 
 
 def test_show_score_integrity_surfaces_wontfix_and_ignored(monkeypatch, capsys):
@@ -225,7 +225,7 @@ def test_show_score_integrity_surfaces_wontfix_and_ignored(monkeypatch, capsys):
     monkeypatch.setattr(state_mod, "get_overall_score", lambda _state: 92.0)
     monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 70.0)
 
-    scan_reporting_analysis_mod._show_score_integrity(
+    scan_reporting_analysis_mod.show_score_integrity(
         state={
             "stats": {
                 "open": 10,
@@ -348,7 +348,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
             ),
         ],
     )
-    scan_reporting_dimensions_mod._show_scorecard_subjective_measures({})
+    scan_reporting_dimensions_mod.show_scorecard_subjective_measures({})
     progress_out = capsys.readouterr().out
     assert (
         "Scorecard dimensions (matches scorecard.png)" in progress_out
@@ -363,7 +363,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
         "DIMENSIONS",
         [SimpleNamespace(name="File health"), SimpleNamespace(name="Code quality")],
     )
-    scan_reporting_dimensions_mod._show_dimension_deltas(
+    scan_reporting_dimensions_mod.show_dimension_deltas(
         prev={
             "File health": {"score": 60.0, "strict": 55.0},
             "Code quality": {"score": 80.0, "strict": 75.0},
@@ -378,7 +378,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
     assert "File health" in delta_out
     assert "Code quality" in delta_out
 
-    scan_reporting_dimensions_mod._show_low_dimension_hints(
+    scan_reporting_dimensions_mod.show_low_dimension_hints(
         {
             "File health": {"score": 52.0, "strict": 40.0},
             "Naming Quality": {"score": 55.0, "strict": 45.0},
@@ -431,7 +431,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
             ),
         ],
     )
-    scan_reporting_dimensions_mod._show_subjective_paths(
+    scan_reporting_dimensions_mod.show_subjective_paths_section(
         {"findings": {}, "scan_path": ".", "strict_score": 90.0},
         {
             "High Level Elegance": {
@@ -461,7 +461,7 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
     assert "Coverage debt: 2 files need review" in subjective_out
     assert "show subjective_review --status open" in subjective_out
 
-    scan_reporting_dimensions_mod._show_subjective_paths(
+    scan_reporting_dimensions_mod.show_subjective_paths_section(
         {"findings": {}, "scan_path": ".", "strict_score": 96.0},
         {
             "High Level Elegance": {
@@ -506,7 +506,7 @@ def test_show_scorecard_dimensions_uses_scorecard_rows(monkeypatch, capsys):
             ),
         ],
     )
-    scan_reporting_dimensions_mod._show_scorecard_subjective_measures({})
+    scan_reporting_dimensions_mod.show_scorecard_subjective_measures({})
     out = capsys.readouterr().out
     assert (
         "Scorecard dimensions (matches scorecard.png):" in out
@@ -539,7 +539,7 @@ def test_show_score_model_breakdown_prints_recipe_and_drags(capsys):
             },
         }
     }
-    scan_reporting_dimensions_mod._show_score_model_breakdown(state)
+    scan_reporting_dimensions_mod.show_score_model_breakdown(state)
     out = capsys.readouterr().out
     assert "Score recipe:" in out
     assert "40% mechanical + 60% subjective" in out
@@ -553,7 +553,7 @@ def test_subjective_rerun_command_builds_dimension_and_holistic_variants():
         max_items=5,
     )
     assert (
-        "review --prepare --refresh --dimensions naming_quality,logic_clarity"
+        "review --prepare --dimensions naming_quality,logic_clarity"
         in command_dims
     )
     assert command_dims.endswith("&& desloppify scan`")
@@ -564,7 +564,7 @@ def test_subjective_rerun_command_builds_dimension_and_holistic_variants():
     )
     assert (
         command_holistic
-        == "`desloppify review --prepare --holistic --refresh && desloppify scan`"
+        == "`desloppify review --prepare && desloppify scan`"
     )
 
 
@@ -610,7 +610,7 @@ def test_show_subjective_paths_prioritizes_integrity_gap(monkeypatch, capsys):
             }
         },
     )
-    scan_reporting_dimensions_mod._show_subjective_paths(
+    scan_reporting_dimensions_mod.show_subjective_paths_section(
         {"findings": {}, "scan_path": ".", "strict_score": 80.0},
         {
             "High Elegance": {
@@ -624,7 +624,7 @@ def test_show_subjective_paths_prioritizes_integrity_gap(monkeypatch, capsys):
     )
     out = capsys.readouterr().out
     assert "High-priority integrity gap:" in out
-    assert "review --prepare --holistic --refresh" in out
+    assert "review --prepare" in out
     assert "Unassessed (0% placeholder): High Elegance" in out
 
 
@@ -632,7 +632,7 @@ def test_show_subjective_paths_shows_target_match_reset_warning(monkeypatch, cap
     import desloppify.state as state_mod
 
     monkeypatch.setattr(state_mod, "path_scoped_findings", lambda *_args, **_kwargs: {})
-    scan_reporting_dimensions_mod._show_subjective_paths(
+    scan_reporting_dimensions_mod.show_subjective_paths_section(
         {
             "findings": {},
             "scan_path": ".",
@@ -664,4 +664,4 @@ def test_show_subjective_paths_shows_target_match_reset_warning(monkeypatch, cap
     out = capsys.readouterr().out
     assert "were reset to 0.0 this scan" in out
     assert "Anti-gaming safeguard applied" in out
-    assert "review --prepare --refresh --dimensions naming_quality,logic_clarity" in out
+    assert "review --prepare --dimensions naming_quality,logic_clarity" in out

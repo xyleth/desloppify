@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ from desloppify.intelligence.review.context import (
     serialize_context,
 )
 from desloppify.intelligence.review.context_holistic import build_holistic_context
-from desloppify.intelligence.review.context_internal.models import HolisticContext
+from desloppify.intelligence.review._context.models import HolisticContext
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.dimensions.lang import get_lang_guidance
 from desloppify.intelligence.review.dimensions.selection import (
@@ -22,12 +23,15 @@ from desloppify.intelligence.review.dimensions.selection import (
     resolve_per_file_dimensions,
 )
 from desloppify.intelligence.review.prepare_batches import (
+    batch_concerns as _batch_concerns,
+)
+from desloppify.intelligence.review.prepare_batches import (
     build_investigation_batches as _build_investigation_batches,
 )
 from desloppify.intelligence.review.prepare_batches import (
     filter_batches_to_dimensions as _filter_batches_to_dimensions,
 )
-from desloppify.intelligence.review.prepare_internal.helpers import (
+from desloppify.intelligence.review._prepare.helpers import (
     HOLISTIC_WORKFLOW,
     append_full_sweep_batch,
 )
@@ -45,6 +49,8 @@ from desloppify.utils import (
     read_file_text,
     rel,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -246,6 +252,19 @@ def prepare_holistic_review(
     ]
     invalid_default = [dim for dim in default_dims if dim not in valid_dims]
     batches = _build_investigation_batches(context, lang, repo_root=path)
+
+    # Append design-coherence batch from mechanical concern signals.
+    try:
+        from desloppify.engine.concerns import generate_concerns
+
+        concerns = generate_concerns(state, lang_name=lang.name)
+        concerns_batch = _batch_concerns(concerns)
+        if concerns_batch:
+            batches.append(concerns_batch)
+    except Exception as exc:
+        logger.debug("Concern generation failed (best-effort): %s", exc)
+        pass  # Concern generation is best-effort — don't block review.
+
     batches = _filter_batches_to_dimensions(batches, dims)
     include_full_sweep = bool(resolved_options.include_full_sweep)
     # Explicitly scoped dimension runs should stay scoped by default.

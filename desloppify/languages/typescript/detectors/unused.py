@@ -14,7 +14,7 @@ from pathlib import Path
 
 from desloppify.utils import (
     PROJECT_ROOT,
-    c,
+    colorize,
     find_ts_files,
     print_table,
     read_file_text,
@@ -312,21 +312,21 @@ def _categorize_unused(filepath: str, lineno: int) -> str:
 def cmd_unused(args: argparse.Namespace) -> None:
     if _should_use_deno_fallback(Path(args.path), find_ts_files(Path(args.path))):
         print(
-            c(
+            colorize(
                 "Deno/edge TypeScript context detected — using source-based unused scan",
                 "dim",
             ),
             file=sys.stderr,
         )
     else:
-        print(c("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
+        print(colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
     entries, _ = detect_unused(Path(args.path), args.category)
     if args.json:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
 
     if not entries:
-        print(c("No unused declarations found.", "green"))
+        print(colorize("No unused declarations found.", "green"))
         return
 
     by_file: dict[str, list] = defaultdict(list)
@@ -338,18 +338,18 @@ def cmd_unused(args: argparse.Namespace) -> None:
         by_cat[e["category"]] += 1
 
     print(
-        c(
+        colorize(
             f"\nUnused declarations: {len(entries)} across {len(by_file)} files\n",
             "bold",
         )
     )
 
-    print(c("By category:", "cyan"))
+    print(colorize("By category:", "cyan"))
     for cat, count in sorted(by_cat.items(), key=lambda x: -x[1]):
         print(f"  {cat}: {count}")
     print()
 
-    print(c("Top files:", "cyan"))
+    print(colorize("Top files:", "cyan"))
     sorted_files = sorted(by_file.items(), key=lambda x: -len(x[1]))
     rows = []
     for filepath, file_entries in sorted_files[: args.top]:

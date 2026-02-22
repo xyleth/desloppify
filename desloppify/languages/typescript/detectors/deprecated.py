@@ -12,7 +12,7 @@ from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.core.signal_patterns import DEPRECATION_MARKER_RE
 from desloppify.languages.typescript.detectors.contracts import DetectorResult
 from desloppify.utils import (
-    c,
+    colorize,
     find_ts_files,
     grep_count_files,
     grep_files,
@@ -185,7 +185,7 @@ def cmd_deprecated(args: Any) -> None:
         return
 
     if not entries:
-        print(c("No @deprecated annotations found.", "green"))
+        print(colorize("No @deprecated annotations found.", "green"))
         return
 
     # Separate top-level and property deprecations
@@ -193,19 +193,19 @@ def cmd_deprecated(args: Any) -> None:
     properties = [e for e in entries if e["kind"] == "property"]
 
     print(
-        c(
+        colorize(
             f"\nDeprecated symbols: {len(entries)} ({len(top_level)} top-level, {len(properties)} properties)\n",
             "bold",
         )
     )
 
     if top_level:
-        print(c("Top-level (importable):", "cyan"))
+        print(colorize("Top-level (importable):", "cyan"))
         rows = []
         for e in top_level[: args.top]:
             imp = str(e["importers"]) if e["importers"] >= 0 else "?"
             status = (
-                c("safe to remove", "green")
+                colorize("safe to remove", "green")
                 if e["importers"] == 0
                 else f"{imp} importers"
             )
@@ -214,7 +214,7 @@ def cmd_deprecated(args: Any) -> None:
         print()
 
     if properties:
-        print(c("Properties (inline):", "cyan"))
+        print(colorize("Properties (inline):", "cyan"))
         rows = []
         for e in properties[: args.top]:
             rows.append([e["symbol"], rel(e["file"]), f"line {e['line']}"])

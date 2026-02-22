@@ -9,19 +9,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import desloppify.app.commands.review.batch as review_batch_mod
 from desloppify.app.commands.review.batch import (
     _do_run_batches,
 )
-from desloppify.app.commands.review.single import (
-    _do_import,
-    _do_prepare,
-    _setup_lang,
-)
+from desloppify.app.commands.review.import_cmd import do_import as _do_import
+from desloppify.app.commands.review.prepare import do_prepare as _do_prepare
+from desloppify.app.commands.review.runtime import setup_lang_concrete as _setup_lang
 from desloppify.cli import create_parser
 from desloppify.core.registry import DETECTORS, display_order
 from desloppify.engine.policy.zones import Zone, ZoneRule
-from desloppify.engine.state_internal.schema import empty_state as build_empty_state
+from desloppify.engine._state.schema import empty_state as build_empty_state
 from desloppify.intelligence.narrative.headline import _compute_headline
 from desloppify.intelligence.narrative.reminders import _compute_reminders
 from desloppify.intelligence.review import (
@@ -488,6 +485,7 @@ class TestPrepareReview:
             "authorization_consistency",
             "incomplete_migration",
             "package_organization",
+            "design_coherence",
         ]
         assert "system_prompt" in data
         assert len(data["files"]) == 1
@@ -701,8 +699,8 @@ class TestScoringIntegration:
     def test_review_findings_appear_in_scoring(self, empty_state, sample_findings_data):
         import_review_findings(_as_review_payload(sample_findings_data), empty_state, "typescript")
 
-        # Subjective scoring is evidence-first: open review findings drive
-        # pass-rate while assessments are retained as metadata.
+        # Assessment scores drive dimension scores directly.
+        # Review findings are tracked but don't affect the score.
         assessments = {
             "naming_quality": {"score": 75},
             "comment_quality": {"score": 85},
@@ -712,7 +710,7 @@ class TestScoringIntegration:
             empty_state["findings"], potentials, subjective_assessments=assessments
         )
         assert "Naming Quality" in dim_scores
-        assert dim_scores["Naming Quality"]["score"] == 90.0
+        assert dim_scores["Naming Quality"]["score"] == 75.0
         det = dim_scores["Naming Quality"]["detectors"]["subjective_assessment"]
         assert det["assessment_score"] == 75.0
 
@@ -1562,10 +1560,10 @@ class TestCmdReviewPrepare:
 
         with (
             patch(
-                "desloppify.app.commands.review.single._setup_lang",
+                "desloppify.app.commands.review.runtime.setup_lang_concrete",
                 return_value=(mock_lang_with_zones, file_list),
             ),
-            patch("desloppify.app.commands.review.single.write_query", capture_query),
+            patch("desloppify.app.commands.review.prepare.write_query", capture_query),
         ):
             _do_prepare(
                 args,
@@ -1588,6 +1586,7 @@ class TestCmdReviewPrepare:
                 "identifier": "process_data_coupling",
                 "summary": "Cross-module coupling is inconsistent",
                 "confidence": "high",
+                "suggestion": "consolidate coupling points",
             }
         ]
         findings_file = tmp_path / "findings.json"
@@ -1612,7 +1611,7 @@ class TestCmdReviewPrepare:
     def test_do_prepare_prints_narrative_reminders(self, mock_lang_with_zones, empty_state, tmp_path, capsys):
         from unittest.mock import MagicMock, patch
 
-        from desloppify.app.commands.review.single import _do_prepare
+        from desloppify.app.commands.review.prepare import do_prepare as _do_prepare
 
         src = tmp_path / "src"
         src.mkdir()
@@ -1634,10 +1633,10 @@ class TestCmdReviewPrepare:
             return {"reminders": [{"type": "review_stale", "message": "Design review is stale."}]}
 
         with patch(
-            "desloppify.app.commands.review.single._setup_lang",
+            "desloppify.app.commands.review.runtime.setup_lang_concrete",
             return_value=(mock_lang_with_zones, file_list),
         ), \
-             patch("desloppify.app.commands.review.single.write_query", lambda _data: None), \
+             patch("desloppify.app.commands.review.prepare.write_query", lambda _data: None), \
              patch("desloppify.intelligence.narrative.compute_narrative", _fake_narrative):
             _do_prepare(
                 args,
@@ -1654,7 +1653,7 @@ class TestCmdReviewPrepare:
     def test_do_import_blocks_large_assessment_swing_without_findings(self, empty_state, tmp_path):
         from unittest.mock import MagicMock
 
-        from desloppify.app.commands.review.single import _do_import
+        from desloppify.app.commands.review.import_cmd import do_import as _do_import
 
         empty_state["subjective_assessments"] = {
             "naming_quality": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
@@ -1676,7 +1675,7 @@ class TestCmdReviewPrepare:
     def test_do_import_allows_override_with_note(self, empty_state, tmp_path):
         from unittest.mock import MagicMock, patch
 
-        from desloppify.app.commands.review.single import _do_import
+        from desloppify.app.commands.review.import_cmd import do_import as _do_import
 
         empty_state["subjective_assessments"] = {
             "naming_quality": {"score": 90, "source": "per_file", "assessed_at": "2026-02-01T00:00:00Z"},
@@ -1798,7 +1797,7 @@ class TestCmdReviewPrepare:
 
         with (
             patch(
-                "desloppify.app.commands.review.single._setup_lang",
+                "desloppify.app.commands.review.runtime.setup_lang_concrete",
                 return_value=(mock_lang_with_zones, file_list),
             ),
             patch(
@@ -1806,7 +1805,7 @@ class TestCmdReviewPrepare:
                 return_value=prepared,
             ),
             patch(
-                "desloppify.app.commands.review.single.write_query",
+                "desloppify.app.commands.review.prepare.write_query",
             ),
             patch(
                 "desloppify.app.commands.review.batch.PROJECT_ROOT",
@@ -2127,29 +2126,41 @@ class TestCmdReviewPrepare:
         assert abstraction["component_scores"]["Interface Honesty"] == 81.0
 
     def test_run_codex_batch_returns_127_when_runner_missing(self, tmp_path):
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
         log_file = tmp_path / "batch.log"
-        with patch(
-            "desloppify.app.commands.review.batch.subprocess.run",
-            side_effect=FileNotFoundError("codex not found"),
-        ):
-            code = review_batch_mod._run_codex_batch(
-                prompt="test prompt",
-                repo_root=tmp_path,
-                output_file=tmp_path / "out.txt",
-                log_file=log_file,
-            )
+        mock_run = MagicMock(side_effect=FileNotFoundError("codex not found"))
+        code = runner_helpers_mod.run_codex_batch(
+            prompt="test prompt",
+            repo_root=tmp_path,
+            output_file=tmp_path / "out.txt",
+            log_file=log_file,
+            deps=runner_helpers_mod.CodexBatchRunnerDeps(
+                timeout_seconds=60,
+                subprocess_run=mock_run,
+                timeout_error=TimeoutError,
+                safe_write_text_fn=lambda p, t: p.write_text(t),
+            ),
+        )
         assert code == 127
         assert "RUNNER ERROR" in log_file.read_text()
 
     def test_run_followup_scan_returns_nonzero_code(self, tmp_path):
-        with patch(
-            "desloppify.app.commands.review.batch.subprocess.run",
-            return_value=MagicMock(returncode=9),
-        ):
-            code = review_batch_mod._run_followup_scan(
-                lang_name="typescript",
-                scan_path=str(tmp_path),
-            )
+        from desloppify.app.commands.review import runner_helpers as runner_helpers_mod
+
+        mock_run = MagicMock(return_value=MagicMock(returncode=9))
+        code = runner_helpers_mod.run_followup_scan(
+            lang_name="typescript",
+            scan_path=str(tmp_path),
+            deps=runner_helpers_mod.FollowupScanDeps(
+                project_root=tmp_path,
+                timeout_seconds=60,
+                python_executable="python",
+                subprocess_run=mock_run,
+                timeout_error=TimeoutError,
+                colorize_fn=lambda text, _: text,
+            ),
+        )
         assert code == 9
 
     def test_do_run_batches_scan_after_import_exits_on_failed_followup(
@@ -2217,7 +2228,7 @@ class TestCmdReviewPrepare:
                 return_value={"assessments": {}, "dimension_notes": {}, "findings": []},
             ),
             patch(
-                "desloppify.app.commands.review.batch._run_followup_scan",
+                "desloppify.app.commands.review.runner_helpers.run_followup_scan",
                 return_value=7,
             ),
         ):
@@ -2387,8 +2398,9 @@ class TestSkippedFindings:
                     "identifier": "god_mod",
                     "summary": "too central",
                     "confidence": "high",
+                    "suggestion": "split it",
                 },
-                # Missing 'summary'
+                # Missing 'summary' and 'suggestion'
                 {
                     "dimension": "cross_module_architecture",
                     "identifier": "god_mod2",
@@ -2399,7 +2411,10 @@ class TestSkippedFindings:
         diff = import_holistic_findings(_as_review_payload(data), state, "typescript")
         assert diff["new"] == 1
         assert diff["skipped"] == 1
-        assert "summary" in diff["skipped_details"][0]["missing"]
+        assert any(
+            f in diff["skipped_details"][0]["missing"]
+            for f in ("summary", "suggestion")
+        )
 
     def test_no_skipped_when_all_valid(self):
         state = build_empty_state()
@@ -2435,6 +2450,7 @@ class TestAutoResolveOnReImport:
                     "identifier": "god_mod",
                     "summary": "too central",
                     "confidence": "high",
+                    "suggestion": "split it",
                 },
             ],
         }
@@ -2456,12 +2472,14 @@ class TestAutoResolveOnReImport:
                     "identifier": "god_mod",
                     "summary": "too central",
                     "confidence": "high",
+                    "suggestion": "split it",
                 },
                 {
                     "dimension": "abstraction_fitness",
                     "identifier": "util_dump",
                     "summary": "dumping ground",
                     "confidence": "medium",
+                    "suggestion": "extract domains",
                 },
             ],
         }
@@ -2480,6 +2498,7 @@ class TestAutoResolveOnReImport:
                     "identifier": "mixed_errors",
                     "summary": "mixed strategies",
                     "confidence": "high",
+                    "suggestion": "consolidate error handling",
                 },
             ],
         }

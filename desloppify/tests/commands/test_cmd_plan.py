@@ -41,7 +41,7 @@ class TestCmdPlanOutput:
         """When no scan has been performed, should print a warning."""
         monkeypatch.setattr(
             plan_cmd,
-            "command_context",
+            "command_runtime",
             lambda args: type("Ctx", (), {"state": {
                 "findings": {},
                 "last_scan": None,
@@ -64,7 +64,7 @@ class TestCmdPlanOutput:
         """When --output is specified, plan should be written to file."""
         monkeypatch.setattr(
             plan_cmd,
-            "command_context",
+            "command_runtime",
             lambda args: type("Ctx", (), {"state": {
                 "findings": {},
                 "last_scan": "2025-01-01",
@@ -92,7 +92,7 @@ class TestCmdPlanOutput:
         """When no --output, plan should be printed to stdout."""
         monkeypatch.setattr(
             plan_cmd,
-            "command_context",
+            "command_runtime",
             lambda args: type("Ctx", (), {"state": {
                 "findings": {},
                 "last_scan": "2025-01-01",

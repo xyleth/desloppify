@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from desloppify.app.commands._show_terminal import show_fix_dry_run_samples
-from desloppify.languages.framework.base.types import FixResult
+from desloppify.languages._framework.base.types import FixResult
 from desloppify.utils import colorize
 
 from .apply_flow import (
@@ -19,7 +20,7 @@ from .options import _load_fixer
 from .review_flow import _cmd_fix_review
 
 
-def cmd_fix(args) -> None:
+def cmd_fix(args: argparse.Namespace) -> None:
     """Auto-fix mechanical issues."""
     fixer_name = args.fixer
     if fixer_name == "review":

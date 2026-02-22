@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from desloppify import state as state_mod
 from desloppify.app.commands.scan.scan_helpers import _format_delta
 from desloppify.app.commands.status_parts.strict_target import (
     format_strict_target_progress,
 )
 from desloppify.utils import colorize
+
+logger = logging.getLogger(__name__)
 
 
 def _consecutive_subjective_integrity_status(state: dict, status: str) -> int:
@@ -29,7 +33,7 @@ def _consecutive_subjective_integrity_status(state: dict, status: str) -> int:
     return streak
 
 
-def _show_diff_summary(diff: dict):
+def show_diff_summary(diff: dict):
     """Print the +new / -resolved / reopened one-liner."""
     diff_parts = []
     if diff["new"]:
@@ -52,7 +56,7 @@ def _show_diff_summary(diff: dict):
         )
 
 
-def _show_score_delta(
+def show_score_delta(
     state: dict,
     prev_overall: float | None,
     prev_objective: float | None,
@@ -62,19 +66,16 @@ def _show_score_delta(
 ):
     """Print the canonical score trio with deltas."""
     stats = state["stats"]
-    new_overall = state_mod.get_overall_score(state)
-    new_objective = state_mod.get_objective_score(state)
-    new_strict = state_mod.get_strict_score(state)
-    new_verified = state_mod.get_verified_strict_score(state)
+    new = state_mod.score_snapshot(state)
 
     wontfix = stats.get("wontfix", 0)
     wontfix_str = f" · {wontfix} wontfix" if wontfix else ""
 
     if (
-        new_overall is None
-        or new_objective is None
-        or new_strict is None
-        or new_verified is None
+        new.overall is None
+        or new.objective is None
+        or new.strict is None
+        or new.verified is None
     ):
         print(
             colorize(
@@ -84,20 +85,20 @@ def _show_score_delta(
         )
         return
 
-    overall_delta_str, overall_color = _format_delta(new_overall, prev_overall)
-    objective_delta_str, objective_color = _format_delta(new_objective, prev_objective)
-    strict_delta_str, strict_color = _format_delta(new_strict, prev_strict)
-    verified_delta_str, verified_color = _format_delta(new_verified, prev_verified)
+    overall_delta_str, overall_color = _format_delta(new.overall, prev_overall)
+    objective_delta_str, objective_color = _format_delta(new.objective, prev_objective)
+    strict_delta_str, strict_color = _format_delta(new.strict, prev_strict)
+    verified_delta_str, verified_color = _format_delta(new.verified, prev_verified)
     print(
         "  Scores: "
-        + colorize(f"overall {new_overall:.1f}/100{overall_delta_str}", overall_color)
+        + colorize(f"overall {new.overall:.1f}/100{overall_delta_str}", overall_color)
         + colorize(
-            f"  objective {new_objective:.1f}/100{objective_delta_str}",
+            f"  objective {new.objective:.1f}/100{objective_delta_str}",
             objective_color,
         )
-        + colorize(f"  strict {new_strict:.1f}/100{strict_delta_str}", strict_color)
+        + colorize(f"  strict {new.strict:.1f}/100{strict_delta_str}", strict_color)
         + colorize(
-            f"  verified {new_verified:.1f}/100{verified_delta_str}",
+            f"  verified {new.verified:.1f}/100{verified_delta_str}",
             verified_color,
         )
         + colorize(
@@ -108,7 +109,7 @@ def _show_score_delta(
     if isinstance(non_comparable_reason, str) and non_comparable_reason.strip():
         print(colorize(f"  Δ non-comparable: {non_comparable_reason.strip()}", "yellow"))
     # Surface wontfix debt gap prominently when significant
-    gap = (new_overall or 0) - (new_strict or 0)
+    gap = (new.overall or 0) - (new.strict or 0)
     if gap >= 5 and wontfix >= 10:
         print(
             colorize(
@@ -154,14 +155,33 @@ def _show_score_delta(
             if streak >= 2:
                 print(
                     colorize(
-                        "    This warning has repeated. Use `desloppify review --prepare --refresh` "
+                        "    This warning has repeated. Use `desloppify review --prepare` "
                         "and run a blind reviewer pass before import.",
                         "yellow",
                 )
             )
 
 
-def _show_strict_target_progress(strict_target: dict | None) -> tuple[float | None, float | None]:
+def show_concern_count(state: dict, lang_name: str | None = None) -> None:
+    """Print concern count if any exist."""
+    try:
+        from desloppify.engine.concerns import generate_concerns
+
+        concerns = generate_concerns(state, lang_name=lang_name)
+        if concerns:
+            print(
+                colorize(
+                    f"  {len(concerns)} potential design concern{'s' if len(concerns) != 1 else ''}"
+                    " (run `show concerns` to view)",
+                    "cyan",
+                )
+            )
+    except Exception as exc:
+        logger.debug("Concern generation failed (best-effort): %s", exc)
+        pass  # Best-effort — don't block scan output.
+
+
+def show_strict_target_progress(strict_target: dict | None) -> tuple[float | None, float | None]:
     """Print strict target progress lines and return (target, gap)."""
     lines, target, gap = format_strict_target_progress(strict_target)
     for message, style in lines:
@@ -169,4 +189,4 @@ def _show_strict_target_progress(strict_target: dict | None) -> tuple[float | No
     return target, gap
 
 
-__all__ = ["_show_diff_summary", "_show_score_delta", "_show_strict_target_progress"]
+__all__ = ["show_concern_count", "show_diff_summary", "show_score_delta", "show_strict_target_progress"]

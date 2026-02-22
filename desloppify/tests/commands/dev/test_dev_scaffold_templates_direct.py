@@ -16,7 +16,7 @@ def test_build_scaffold_files_contains_expected_paths():
 
     assert files["detectors/__init__.py"] == ""
     assert files["fixers/__init__.py"] == ""
-    assert files["review_data/per_file_dimensions.override.json"] == "{}\n"
+    assert "review_data/per_file_dimensions.override.json" not in files
     assert files["review_data/holistic_dimensions.override.json"] == "{}\n"
     assert "build_dep_graph" in files["detectors/deps.py"]
 

@@ -10,7 +10,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from desloppify.core.internal import text_utils as _text_utils
+from desloppify.core._internal import text_utils as _text_utils
 from desloppify.core.runtime_state import current_runtime_context
 
 get_area = _text_utils.get_area
@@ -203,9 +203,6 @@ def colorize(text: str, color: str) -> str:
     return f"{COLORS.get(color, '')}{text}{COLORS['reset']}"
 
 
-c = colorize
-
-
 def log(msg: str):
     """Print a dim status message to stderr."""
     print(colorize(msg, "dim"), file=sys.stderr)
@@ -244,7 +241,7 @@ def display_entries(
 
     Handles the three-branch pattern shared by most cmd wrappers:
     1. --json → dump payload  2. empty → green message  3. table → header + rows + overflow.
-    Returns True if entries were displayed, False if empty.
+    Returns True if entries were displayed (or JSON was emitted), False if empty.
     """
     if getattr(args, "json", False):
         payload = json_payload or {"count": len(entries), "entries": entries}

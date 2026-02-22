@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.intelligence.review.prepare_internal.remediation_engine import (
+from desloppify.intelligence.review._prepare.remediation_engine import (
     empty_plan,
     generate_remediation_plan,
 )

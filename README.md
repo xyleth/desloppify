@@ -4,7 +4,7 @@ Detects subjective and mechanical code-base issues - everything from poor qualit
 
 Every scan generates a scorecard badge you can add to your README — here's the one for this repo. Strict score counts open + wontfix debt; ignored findings are tracked separately:
 
-<img src="assets/scorecard.png" width="100%">
+<img src="docs/scorecard.png" width="100%">
 
 Adding a new language plugin? See `desloppify/languages/README.md`.
 
@@ -51,7 +51,7 @@ It handles the mechanical layer automatically: scan, detect, auto-fix what it ca
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 
-<img src="assets/engineering.png" width="100%">
+<img src="docs/engineering.png" width="100%">
 
 ---
 
@@ -151,9 +151,7 @@ Command entry modules are intentionally thin orchestrators:
 - `desloppify/app/commands/review/cmd.py` delegates to
   `desloppify/app/commands/review/prepare.py`, `desloppify/app/commands/review/batches.py`, `desloppify/app/commands/review/import_cmd.py`, and `desloppify/app/commands/review/runtime.py`
 - `desloppify/app/commands/scan/scan_reporting_dimensions.py` delegates to
-  `desloppify/app/commands/scan/scan_reporting_progress.py`, `desloppify/app/commands/scan/scan_reporting_breakdown.py`, and `desloppify/app/commands/scan/scan_reporting_subjective_paths.py`
-- `scan_reporting_subjective_paths.py` is a facade over
-  `scan_reporting_subjective_common.py`, `scan_reporting_subjective_integrity.py`, and `scan_reporting_subjective_output.py`
+  `desloppify/app/commands/scan/scan_reporting_presentation.py` and `desloppify/app/commands/scan/scan_reporting_subjective.py`
 - `desloppify/app/cli_support/parser.py` delegates subcommand construction to `desloppify/app/cli_support/parser_groups.py`
 
 Public CLI behavior should be preserved when refactoring these orchestrators.

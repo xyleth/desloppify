@@ -91,12 +91,15 @@ class TestCmdZoneDispatch:
         assert calls == ["clear"]
 
     def test_unknown_action_prints_usage(self, capsys):
+        import pytest
+
         class FakeArgs:
             zone_action = "bogus"
 
-        cmd_zone(FakeArgs())
-        out = capsys.readouterr().out
-        assert "Usage:" in out
+        with pytest.raises(SystemExit, match="1"):
+            cmd_zone(FakeArgs())
+        err = capsys.readouterr().err
+        assert "Usage:" in err
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +111,9 @@ class TestZoneSet:
     """_zone_set validates zone values and persists overrides."""
 
     def test_invalid_zone_value(self, monkeypatch, capsys):
-        """Setting an invalid zone value should print an error."""
+        """Setting an invalid zone value should exit with error."""
+        import pytest
+
         fake_config = {"zone_overrides": {}}
 
         class FakeArgs:
@@ -122,9 +127,10 @@ class TestZoneSet:
                 state_path=None,
             )
 
-        _zone_set(FakeArgs())
-        out = capsys.readouterr().out
-        assert "Invalid zone" in out
+        with pytest.raises(SystemExit, match="1"):
+            _zone_set(FakeArgs())
+        err = capsys.readouterr().err
+        assert "Invalid zone" in err
 
     def test_valid_zone_value_saves(self, monkeypatch, capsys):
         """Setting a valid zone value should save config."""

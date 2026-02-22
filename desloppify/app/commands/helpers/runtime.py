@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.state import state_path
@@ -14,8 +15,8 @@ from desloppify.core.config import load_config
 class CommandRuntime:
     """Explicit runtime dependencies shared by command handlers."""
 
-    config: dict
-    state: dict
+    config: dict[str, Any]
+    state: dict[str, Any]
     state_path: Path | None
 
 
@@ -26,13 +27,13 @@ def command_runtime(args) -> CommandRuntime:
         return runtime
 
     config = load_config()
-    sp = state_path(args)
-    if isinstance(sp, str):
-        sp = Path(sp)
+    state_file = state_path(args)
+    if isinstance(state_file, str):
+        state_file = Path(state_file)
 
-    state = state_mod.load_state(sp)
+    state = state_mod.load_state(state_file)
 
-    return CommandRuntime(config=config, state=state, state_path=sp)
+    return CommandRuntime(config=config, state=state, state_path=state_file)
 
 
 __all__ = ["CommandRuntime", "command_runtime"]

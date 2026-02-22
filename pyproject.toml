@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desloppify"
-version = "0.6.0"
+version = "0.7.0"
 description = "Multi-language codebase health scanner and technical debt tracker"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = ["Pillow>=9.0.0"]
+
+[project.optional-dependencies]
+treesitter = ["tree-sitter-language-pack>=0.3"]
 
 [project.scripts]
 desloppify = "desloppify.cli:main"
@@ -21,7 +24,7 @@ exclude = ["desloppify.tests", "desloppify.tests.*"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-"desloppify.languages._shared" = ["review_data/*.json"]
+"desloppify.languages._framework" = ["review_data/*.json"]
 "desloppify.languages.python" = ["review_data/*.json"]
 "desloppify.languages.typescript" = ["review_data/*.json"]
 "desloppify.languages.csharp" = ["review_data/*.json"]
@@ -30,7 +33,7 @@ include-package-data = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ['desloppify/tests', 'desloppify/languages/python/tests', 'desloppify/languages/typescript/tests', 'desloppify/languages/csharp/tests', 'desloppify/languages/dart/tests', 'desloppify/languages/gdscript/tests']
+testpaths = ['desloppify/tests', 'desloppify/languages/python/tests', 'desloppify/languages/typescript/tests', 'desloppify/languages/csharp/tests', 'desloppify/languages/dart/tests', 'desloppify/languages/gdscript/tests', 'desloppify/languages/go/tests']
 norecursedirs = ["desloppify/tests/fixtures"]
 
 [tool.ruff]
@@ -58,8 +61,7 @@ files = [
   "desloppify/app/commands/review/import_cmd.py",
   "desloppify/app/commands/review/runtime.py",
   "desloppify/app/commands/scan/scan_reporting_dimensions.py",
-  "desloppify/app/commands/scan/scan_reporting_progress.py",
-  "desloppify/app/commands/scan/scan_reporting_breakdown.py",
+  "desloppify/app/commands/scan/scan_reporting_presentation.py",
   "desloppify/app/commands/scan/scan_reporting_subjective_paths.py",
   "desloppify/app/cli_support/parser.py",
   "desloppify/app/cli_support/parser_groups.py",

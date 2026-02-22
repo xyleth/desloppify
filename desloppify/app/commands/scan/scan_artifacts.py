@@ -11,12 +11,7 @@ from desloppify.app.commands.scan.scan_workflow import (
 )
 from desloppify.core.config import config_for_query
 from desloppify.scoring import compute_health_breakdown
-from desloppify.state import (
-    get_objective_score,
-    get_overall_score,
-    get_strict_score,
-    get_verified_strict_score,
-)
+from desloppify.state import score_snapshot
 from desloppify.utils import PROJECT_ROOT, colorize
 
 
@@ -31,12 +26,13 @@ def build_scan_query_payload(
     noise: ScanNoiseSnapshot,
 ) -> dict[str, object]:
     """Build the canonical query payload persisted after a scan."""
+    scores = score_snapshot(state)
     return {
         "command": "scan",
-        "overall_score": get_overall_score(state),
-        "objective_score": get_objective_score(state),
-        "strict_score": get_strict_score(state),
-        "verified_strict_score": get_verified_strict_score(state),
+        "overall_score": scores.overall,
+        "objective_score": scores.objective,
+        "strict_score": scores.strict,
+        "verified_strict_score": scores.verified,
         "prev_overall_score": merge.prev_overall,
         "prev_objective_score": merge.prev_objective,
         "prev_strict_score": merge.prev_strict,
@@ -87,7 +83,7 @@ def emit_scorecard_badge(
 
     try:
         generate_scorecard(state, badge_path)
-    except OSError:
+    except (OSError, ImportError):
         return None
 
     try:

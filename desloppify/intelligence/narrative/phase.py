@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import importlib
 
-
-def _history_strict(entry: dict) -> float | None:
-    """Strict score from history entry."""
-    return entry.get("strict_score")
+from ._constants import _history_strict
 
 
 def _detect_phase(history: list[dict], strict_score: float | None) -> str:
@@ -19,15 +16,14 @@ def _detect_phase(history: list[dict], strict_score: float | None) -> str:
         return "first_scan"
 
     strict = strict_score
-    if strict is None and history:
+    if strict is None:
         strict = _history_strict(history[-1])
 
     # Check regression: strict dropped from previous scan
-    if len(history) >= 2:
-        prev = _history_strict(history[-2])
-        curr = _history_strict(history[-1])
-        if prev is not None and curr is not None and curr < prev - 0.5:
-            return "regression"
+    prev = _history_strict(history[-2])
+    curr = _history_strict(history[-1])
+    if prev is not None and curr is not None and curr < prev - 0.5:
+        return "regression"
 
     # Check stagnation: strict unchanged ±0.5 for 3+ scans
     if len(history) >= 3:
@@ -39,7 +35,7 @@ def _detect_phase(history: list[dict], strict_score: float | None) -> str:
 
     # Early momentum: scans 2-5 with score rising — check BEFORE score thresholds
     # so early projects get motivational framing even if score is already high
-    if len(history) <= 5 and len(history) >= 2:
+    if len(history) <= 5:
         first = _history_strict(history[0])
         last = _history_strict(history[-1])
         if first is not None and last is not None and last > first:
@@ -55,7 +51,7 @@ def _detect_phase(history: list[dict], strict_score: float | None) -> str:
 
 
 def _detect_milestone(
-    state: dict, diff: dict | None, history: list[dict]
+    state: dict, _diff: dict | None, history: list[dict],
 ) -> str | None:
     """Detect notable milestones worth celebrating."""
     state_mod = importlib.import_module("desloppify.state")

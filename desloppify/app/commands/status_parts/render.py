@@ -11,6 +11,7 @@ from desloppify.app.commands.helpers.subjective import print_subjective_followup
 from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
+from desloppify.app.commands.scan.scan_reporting_presentation import dimension_bar
 from desloppify.app.commands.status_parts.summary import (
     print_scan_completeness,
     print_scan_metrics,
@@ -188,17 +189,7 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
         strict_val = ds.get("strict", score_val)
         checks = ds["checks"]
 
-        filled = round(score_val / 100 * bar_len)
-        if score_val >= 98:
-            bar = colorize("█" * filled + "░" * (bar_len - filled), "green")
-        elif score_val >= 93:
-            bar = colorize("█" * filled, "green") + colorize(
-                "░" * (bar_len - filled), "dim"
-            )
-        else:
-            bar = colorize("█" * filled, "yellow") + colorize(
-                "░" * (bar_len - filled), "dim"
-            )
+        bar = dimension_bar(score_val, colorize_fn=colorize, bar_len=bar_len)
 
         focus = colorize(" ←", "yellow") if dim.name == lowest_name else "  "
         checks_str = f"{checks:>7,}"
@@ -220,22 +211,13 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
             strict_val = float(entry.get("strict", score_val))
             tier = 4
 
-            filled = round(score_val / 100 * bar_len)
-            if score_val >= 98:
-                bar = colorize("█" * filled + "░" * (bar_len - filled), "green")
-            elif score_val >= 93:
-                bar = colorize("█" * filled, "green") + colorize(
-                    "░" * (bar_len - filled), "dim"
-                )
-            else:
-                bar = colorize("█" * filled, "yellow") + colorize(
-                    "░" * (bar_len - filled), "dim"
-                )
+            bar = dimension_bar(score_val, colorize_fn=colorize, bar_len=bar_len)
 
             focus = colorize(" ←", "yellow") if name == lowest_name else "  "
             checks_str = f"{'—':>7}"
+            stale_tag = colorize(" [stale]", "yellow") if entry.get("stale") else ""
             print(
-                f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}"
+                f"  {name:<22} {checks_str}  {score_val:5.1f}%  {strict_val:5.1f}%  {bar}  T{tier}  {'review'}{focus}{stale_tag}"
             )
     print(
         colorize("  Health = open penalized | Strict = open + wontfix penalized", "dim")
@@ -246,6 +228,21 @@ def show_dimension_table(state: dict, dim_scores: dict) -> None:
             "dim",
         )
     )
+    stale_keys = [
+        str(e.get("dimension_key"))
+        for e in scorecard_subjective
+        if e.get("stale") and e.get("dimension_key")
+    ]
+    if stale_keys:
+        n = len(stale_keys)
+        dims_arg = ",".join(stale_keys)
+        print(
+            colorize(
+                f"  {n} stale subjective dimension{'s' if n != 1 else ''}"
+                f" — run `desloppify review --prepare --dimensions {dims_arg}` to re-review",
+                "yellow",
+            )
+        )
     print()
 
 

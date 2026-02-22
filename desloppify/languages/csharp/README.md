@@ -431,7 +431,7 @@ This section is important because C# support is not isolated to `lang/csharp/`.
 
 ### Shared phase helpers and contracts
 
-`desloppify/languages/framework/base/` (notably `types.py` and `shared_phases.py`):
+`desloppify/languages/_framework/base/` (notably `types.py` and `shared_phases.py`):
 
 - Defines `LangConfig` contract C# must satisfy
 - Runs shared phase logic for:

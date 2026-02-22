@@ -73,8 +73,8 @@ Desloppify Scan (python)
   Subjective path:
     North star: strict 40.0/100 → target 98.0 (+58.0 needed)
     High-priority integrity gap: holistic review stale/missing
-    Refresh baseline: `desloppify review --prepare --holistic --refresh`
-    Then import and rescan: `desloppify review --import findings.json --holistic && desloppify scan`
+    Refresh baseline: `desloppify review --prepare`
+    Then import and rescan: `desloppify review --import findings.json && desloppify scan`
     Quality below target (<98%): AI Generated Debt 0.0%, Abstraction Fit 0.0%, Contracts 0.0%
     Next command to improve subjective scores: `desloppify review --prepare --dimensions ai_generated_debt,abstraction_fitness,contract_coherence`
     Coverage debt: 1 file need review (1 unreviewed)
@@ -90,5 +90,5 @@ Desloppify Scan (python)
 
   → First scan complete. 1 open findings across 3 dimensions.
 
-  Subjective integrity: 1 holistic stale/missing signal(s) — `desloppify review --prepare --holistic --refresh`
+  Subjective integrity: 1 holistic stale/missing signal(s) — `desloppify review --prepare`
 

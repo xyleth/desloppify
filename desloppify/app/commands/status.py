@@ -70,10 +70,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
 
-    overall_score = state_mod.get_overall_score(state)
-    objective_score = state_mod.get_objective_score(state)
-    strict_score = state_mod.get_strict_score(state)
-    verified_strict_score = state_mod.get_verified_strict_score(state)
+    scores = state_mod.score_snapshot(state)
     by_tier = stats.get("by_tier", {})
     target_strict_score = target_strict_score_from_config(config, fallback=95.0)
 
@@ -86,10 +83,10 @@ def cmd_status(args: argparse.Namespace) -> None:
     ignores = config.get("ignore", [])
 
     for line, style in score_summary_lines(
-        overall_score=overall_score,
-        objective_score=objective_score,
-        strict_score=strict_score,
-        verified_strict_score=verified_strict_score,
+        overall_score=scores.overall,
+        objective_score=scores.objective,
+        strict_score=scores.strict,
+        verified_strict_score=scores.verified,
     ):
         print(colorize(line, style))
     print_scan_metrics(state)
@@ -97,7 +94,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     if dim_scores:
         show_dimension_table(state, dim_scores)
-        reporting_dimensions_mod._show_score_model_breakdown(
+        reporting_dimensions_mod.show_score_model_breakdown(
             state,
             dim_scores=dim_scores,
         )
@@ -139,10 +136,10 @@ def cmd_status(args: argparse.Namespace) -> None:
         suppression=suppression,
         narrative=narrative,
         ignores=ignores,
-        overall_score=overall_score,
-        objective_score=objective_score,
-        strict_score=strict_score,
-        verified_strict_score=verified_strict_score,
+        overall_score=scores.overall,
+        objective_score=scores.objective,
+        strict_score=scores.strict,
+        verified_strict_score=scores.verified,
     )
 
 
@@ -154,11 +151,12 @@ def _status_json_payload(
     subjective_measures: list[dict],
     suppression: dict,
 ) -> dict:
+    scores = state_mod.score_snapshot(state)
     return {
-        "overall_score": state_mod.get_overall_score(state),
-        "objective_score": state_mod.get_objective_score(state),
-        "strict_score": state_mod.get_strict_score(state),
-        "verified_strict_score": state_mod.get_verified_strict_score(state),
+        "overall_score": scores.overall,
+        "objective_score": scores.objective,
+        "strict_score": scores.strict,
+        "verified_strict_score": scores.verified,
         "dimension_scores": dim_scores,
         "score_breakdown": compute_health_breakdown(dim_scores) if dim_scores else None,
         "scorecard_dimensions": scorecard_dims,

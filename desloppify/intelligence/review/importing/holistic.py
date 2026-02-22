@@ -7,6 +7,8 @@ from typing import Any
 
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
 from desloppify.intelligence.review.importing.shared import (
+    _lang_potentials,
+    _review_file_cache,
     extract_reviewed_files,
     store_assessments,
 )
@@ -46,8 +48,7 @@ def update_reviewed_file_cache(
     """Refresh per-file review cache entries from holistic payload metadata."""
     if not reviewed_files:
         return
-    review_cache = state.setdefault("review_cache", {})
-    file_cache = review_cache.setdefault("files", {})
+    file_cache = _review_file_cache(state)
     now = utc_now_fn()
     resolved_project_root = project_root if project_root is not None else PROJECT_ROOT
     for file_path in reviewed_files:
@@ -62,6 +63,138 @@ def update_reviewed_file_cache(
             "reviewed_at": now,
             "finding_count": existing_count if isinstance(existing_count, int) else 0,
         }
+
+
+_POSITIVE_PREFIXES = (
+    "good ",
+    "well ",
+    "strong ",
+    "clean ",
+    "excellent ",
+    "nice ",
+    "solid ",
+)
+
+
+def _validate_and_build_findings(
+    findings_list: list[dict],
+    holistic_prompts: dict,
+    lang_name: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate raw holistic findings and build state-ready finding dicts.
+
+    Returns (review_findings, skipped, dismissed_concerns).
+    """
+    required = ("dimension", "identifier", "summary", "confidence", "suggestion")
+    review_findings: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    dismissed_concerns: list[dict[str, Any]] = []
+
+    for idx, finding in enumerate(findings_list):
+        # Handle dismissed concern verdicts (no dimension/summary required).
+        if finding.get("concern_verdict") == "dismissed":
+            fp = finding.get("concern_fingerprint", "")
+            if fp:
+                dismissed_concerns.append(
+                    {
+                        "fingerprint": fp,
+                        "concern_type": finding.get("concern_type", ""),
+                        "concern_file": finding.get("concern_file", ""),
+                        "reasoning": finding.get("reasoning", ""),
+                    }
+                )
+            continue
+
+        missing = [key for key in required if key not in finding]
+        if missing:
+            skipped.append(
+                {
+                    "index": idx,
+                    "missing": missing,
+                    "identifier": finding.get("identifier", "<none>"),
+                }
+            )
+            continue
+
+        # Safety net: skip positive observations that slipped past the prompt.
+        if finding["summary"].lower().startswith(_POSITIVE_PREFIXES):
+            skipped.append(
+                {
+                    "index": idx,
+                    "missing": ["positive observation (not a defect)"],
+                    "identifier": finding.get("identifier", "<none>"),
+                }
+            )
+            continue
+
+        confidence = finding.get("confidence", "low")
+        if confidence not in ("high", "medium", "low"):
+            confidence = "low"
+
+        dimension = finding["dimension"]
+        if dimension not in holistic_prompts:
+            skipped.append(
+                {
+                    "index": idx,
+                    "missing": [f"invalid dimension: {dimension}"],
+                    "identifier": finding.get("identifier", "<none>"),
+                }
+            )
+            continue
+
+        # Confirmed concern verdicts become "concerns" detector findings.
+        is_confirmed_concern = finding.get("concern_verdict") == "confirmed"
+        detector = "concerns" if is_confirmed_concern else "review"
+
+        content_hash = hashlib.sha256(finding["summary"].encode()).hexdigest()[:8]
+        detail: dict[str, Any] = {
+            "holistic": True,
+            "dimension": dimension,
+            "related_files": finding.get("related_files", []),
+            "evidence": finding.get("evidence", []),
+            "suggestion": finding.get("suggestion", ""),
+            "reasoning": finding.get("reasoning", ""),
+        }
+        if is_confirmed_concern:
+            detail["concern_type"] = finding.get("concern_type", "")
+            detail["concern_verdict"] = "confirmed"
+
+        prefix = "concern" if is_confirmed_concern else "holistic"
+        file = finding.get("concern_file", "") if is_confirmed_concern else ""
+        imported = make_finding(
+            detector=detector,
+            file=file,
+            name=f"{prefix}::{dimension}::{finding['identifier']}::{content_hash}",
+            tier=3,
+            confidence=confidence,
+            summary=finding["summary"],
+            detail=detail,
+        )
+        imported["lang"] = lang_name
+        review_findings.append(imported)
+
+    return review_findings, skipped, dismissed_concerns
+
+
+def _auto_resolve_stale_holistic(
+    state: dict[str, Any],
+    new_ids: set[str],
+    diff: dict[str, Any],
+    utc_now_fn,
+) -> None:
+    """Auto-resolve open holistic findings not present in the latest import."""
+    diff.setdefault("auto_resolved", 0)
+    for finding_id, finding in state.get("findings", {}).items():
+        if (
+            finding["status"] == "open"
+            and finding.get("detector") in ("review", "concerns")
+            and finding.get("detail", {}).get("holistic")
+            and finding_id not in new_ids
+        ):
+            finding["status"] = "auto_resolved"
+            finding["resolved_at"] = utc_now_fn()
+            finding["note"] = "not reported in latest holistic re-import"
+            diff["auto_resolved"] += 1
 
 
 def import_holistic_findings(
@@ -85,85 +218,55 @@ def import_holistic_findings(
         )
 
     _, holistic_prompts, _ = load_dimensions_for_lang(lang_name)
-    required = ("dimension", "identifier", "summary", "confidence")
+    review_findings, skipped, dismissed_concerns = _validate_and_build_findings(
+        findings_list, holistic_prompts, lang_name
+    )
 
-    review_findings: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
+    # Store dismissed concern verdicts for suppression in future concern generation.
+    if dismissed_concerns:
+        from desloppify.engine.concerns import generate_concerns
 
-    for idx, finding in enumerate(findings_list):
-        missing = [key for key in required if key not in finding]
-        if missing:
-            skipped.append(
-                {
-                    "index": idx,
-                    "missing": missing,
-                    "identifier": finding.get("identifier", "<none>"),
-                }
-            )
-            continue
+        store = state.setdefault("concern_dismissals", {})
+        now = utc_now_fn()
+        # Compute current concerns to get source_finding_ids for each fingerprint.
+        current_concerns = generate_concerns(state, lang_name=lang_name)
+        concern_sources = {
+            c.fingerprint: list(c.source_findings) for c in current_concerns
+        }
+        for dc in dismissed_concerns:
+            fp = dc["fingerprint"]
+            store[fp] = {
+                "dismissed_at": now,
+                "reasoning": dc.get("reasoning", ""),
+                "concern_type": dc.get("concern_type", ""),
+                "concern_file": dc.get("concern_file", ""),
+                "source_finding_ids": concern_sources.get(fp, []),
+            }
 
-        confidence = finding.get("confidence", "low")
-        if confidence not in ("high", "medium", "low"):
-            confidence = "low"
-
-        dimension = finding["dimension"]
-        if dimension not in holistic_prompts:
-            skipped.append(
-                {
-                    "index": idx,
-                    "missing": [f"invalid dimension: {dimension}"],
-                    "identifier": finding.get("identifier", "<none>"),
-                }
-            )
-            continue
-
-        content_hash = hashlib.sha256(finding["summary"].encode()).hexdigest()[:8]
-        imported = make_finding(
-            detector="review",
-            file="",
-            name=f"holistic::{dimension}::{finding['identifier']}::{content_hash}",
-            tier=3,
-            confidence=confidence,
-            summary=finding["summary"],
-            detail={
-                "holistic": True,
-                "dimension": dimension,
-                "related_files": finding.get("related_files", []),
-                "evidence": finding.get("evidence", []),
-                "suggestion": finding.get("suggestion", ""),
-                "reasoning": finding.get("reasoning", ""),
-            },
-        )
-        imported["lang"] = lang_name
-        review_findings.append(imported)
-
-    potentials = state.setdefault("potentials", {}).setdefault(lang_name, {})
+    potentials = _lang_potentials(state, lang_name)
     existing_review = potentials.get("review", 0)
     potentials["review"] = max(existing_review, HOLISTIC_POTENTIAL)
+
+    concern_count = sum(1 for f in review_findings if f.get("detector") == "concerns")
+    if concern_count:
+        potentials["concerns"] = max(potentials.get("concerns", 0), concern_count)
+
+    merge_potentials_dict: dict[str, int] = {"review": potentials.get("review", 0)}
+    if potentials.get("concerns", 0) > 0:
+        merge_potentials_dict["concerns"] = potentials["concerns"]
 
     diff = merge_scan(
         state,
         review_findings,
         options=MergeScanOptions(
             lang=lang_name,
-            potentials={"review": potentials.get("review", 0)},
+            potentials=merge_potentials_dict,
             merge_potentials=True,
         ),
     )
 
     new_ids = {finding["id"] for finding in review_findings}
-    diff.setdefault("auto_resolved", 0)
-    for finding_id, finding in state.get("findings", {}).items():
-        if (
-            finding["status"] == "open"
-            and finding.get("detector") == "review"
-            and finding.get("detail", {}).get("holistic")
-            and finding_id not in new_ids
-        ):
-            finding["status"] = "auto_resolved"
-            finding["resolved_at"] = utc_now_fn()
-            finding["note"] = "not reported in latest holistic re-import"
-            diff["auto_resolved"] += 1
+    _auto_resolve_stale_holistic(state, new_ids, diff, utc_now_fn)
 
     if skipped:
         diff["skipped"] = len(skipped)
@@ -182,7 +285,40 @@ def import_holistic_findings(
         utc_now_fn=utc_now_fn,
     )
     resolve_holistic_coverage_findings(state, diff, utc_now_fn=utc_now_fn)
+
+    # Clean up dismissals whose source findings were all resolved — runs after
+    # all finding mutations (merge_scan, auto_resolve, coverage resolve) so it
+    # sees the final state.
+    from desloppify.engine.concerns import cleanup_stale_dismissals
+
+    cleanup_stale_dismissals(state)
+
     return diff
+
+
+def _resolve_total_files(state: dict[str, Any], lang_name: str | None) -> int:
+    """Best-effort total file count from codebase_metrics or review cache."""
+    review_cache = state.get("review_cache", {})
+    fallback = len(review_cache.get("files", {}))
+
+    codebase_metrics = state.get("codebase_metrics", {})
+    if not isinstance(codebase_metrics, dict):
+        return fallback
+
+    # Try language-specific metrics first, then global.
+    sources = []
+    if lang_name:
+        lang_metrics = codebase_metrics.get(lang_name)
+        if isinstance(lang_metrics, dict):
+            sources.append(lang_metrics)
+    sources.append(codebase_metrics)
+
+    for source in sources:
+        metric_total = source.get("total_files")
+        if isinstance(metric_total, int) and metric_total > 0:
+            return metric_total
+
+    return fallback
 
 
 def update_holistic_review_cache(
@@ -207,22 +343,9 @@ def update_holistic_review_cache(
         and finding["dimension"] in holistic_prompts
     ]
 
-    total_files = len(review_cache.get("files", {}))
-    codebase_metrics = state.get("codebase_metrics", {})
-    if isinstance(codebase_metrics, dict):
-        lang_metrics = codebase_metrics.get(lang_name) if lang_name else None
-        if isinstance(lang_metrics, dict):
-            metric_total = lang_metrics.get("total_files")
-            if isinstance(metric_total, int) and metric_total > 0:
-                total_files = metric_total
-        else:
-            metric_total = codebase_metrics.get("total_files")
-            if isinstance(metric_total, int) and metric_total > 0:
-                total_files = metric_total
-
     review_cache["holistic"] = {
         "reviewed_at": now,
-        "file_count_at_review": total_files,
+        "file_count_at_review": _resolve_total_files(state, lang_name),
         "finding_count": len(valid),
     }
 

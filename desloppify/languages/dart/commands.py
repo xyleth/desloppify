@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from desloppify.languages._shared.scaffold_detect_commands import (
+from desloppify.languages._framework.commands_base import (
     make_cmd_cycles,
     make_cmd_deps,
     make_cmd_dupes,
@@ -13,10 +13,10 @@ from desloppify.languages._shared.scaffold_detect_commands import (
 from desloppify.languages.dart.detectors.deps import build_dep_graph
 from desloppify.languages.dart.extractors import extract_functions, find_dart_files
 from desloppify.languages.dart.phases import DART_COMPLEXITY_SIGNALS
-from desloppify.languages.framework.commands_base import (
+from desloppify.languages._framework.commands_base import (
+    build_standard_detect_registry,
     make_cmd_complexity,
     make_cmd_large,
-    make_get_detect_commands,
 )
 
 _cmd_large_impl = make_cmd_large(find_dart_files, default_threshold=500)
@@ -70,11 +70,13 @@ def cmd_dupes(args: argparse.Namespace) -> None:
     _cmd_dupes_impl(args)
 
 
-get_detect_commands = make_get_detect_commands(
-    cmd_deps=cmd_deps,
-    cmd_cycles=cmd_cycles,
-    cmd_orphaned=cmd_orphaned,
-    cmd_dupes=cmd_dupes,
-    cmd_large=cmd_large,
-    cmd_complexity=cmd_complexity,
-)
+def get_detect_commands() -> dict[str, object]:
+    """Return the standard detect command registry for Dart."""
+    return build_standard_detect_registry(
+        cmd_deps=cmd_deps,
+        cmd_cycles=cmd_cycles,
+        cmd_orphaned=cmd_orphaned,
+        cmd_dupes=cmd_dupes,
+        cmd_large=cmd_large,
+        cmd_complexity=cmd_complexity,
+    )

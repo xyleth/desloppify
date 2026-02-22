@@ -22,12 +22,12 @@ from desloppify.languages.csharp.extractors import (
     find_csharp_files,
 )
 from desloppify.languages.csharp.phases import CSHARP_COMPLEXITY_SIGNALS
-from desloppify.languages.framework.commands_base import (
+from desloppify.languages._framework.commands_base import (
+    build_standard_detect_registry,
     make_cmd_complexity,
     make_cmd_large,
-    make_get_detect_commands,
 )
-from desloppify.utils import c, print_table, rel
+from desloppify.utils import colorize, print_table, rel
 
 _cmd_large_impl = make_cmd_large(find_csharp_files, default_threshold=500)
 _cmd_complexity_impl = make_cmd_complexity(
@@ -83,10 +83,10 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         )
         return
     if not entries:
-        print(c("\nNo orphaned files found.", "green"))
+        print(colorize("\nNo orphaned files found.", "green"))
         return
     total_loc = sum(e["loc"] for e in entries)
-    print(c(f"\nOrphaned files: {len(entries)} files, {total_loc} LOC\n", "bold"))
+    print(colorize(f"\nOrphaned files: {len(entries)} files, {total_loc} LOC\n", "bold"))
     top = getattr(args, "top", 20)
     rows = [[rel(e["file"]), str(e["loc"])] for e in entries[:top]]
     print_table(["File", "LOC"], rows, [80, 6])
@@ -104,9 +104,9 @@ def cmd_dupes(args: argparse.Namespace) -> None:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
     if not entries:
-        print(c("No duplicate functions found.", "green"))
+        print(colorize("No duplicate functions found.", "green"))
         return
-    print(c(f"\nDuplicate functions: {len(entries)} pairs\n", "bold"))
+    print(colorize(f"\nDuplicate functions: {len(entries)} pairs\n", "bold"))
     rows = []
     for e in entries[: getattr(args, "top", 20)]:
         a, b = e["fn_a"], e["fn_b"]
@@ -121,11 +121,13 @@ def cmd_dupes(args: argparse.Namespace) -> None:
     print_table(["Function A", "Function B", "Sim", "Kind"], rows, [40, 40, 5, 14])
 
 
-get_detect_commands = make_get_detect_commands(
-    cmd_deps=cmd_deps,
-    cmd_cycles=cmd_cycles,
-    cmd_orphaned=cmd_orphaned,
-    cmd_dupes=cmd_dupes,
-    cmd_large=cmd_large,
-    cmd_complexity=cmd_complexity,
-)
+def get_detect_commands() -> dict[str, object]:
+    """Return the standard detect command registry for C#."""
+    return build_standard_detect_registry(
+        cmd_deps=cmd_deps,
+        cmd_cycles=cmd_cycles,
+        cmd_orphaned=cmd_orphaned,
+        cmd_dupes=cmd_dupes,
+        cmd_large=cmd_large,
+        cmd_complexity=cmd_complexity,
+    )

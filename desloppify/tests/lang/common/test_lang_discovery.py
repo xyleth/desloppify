@@ -8,7 +8,7 @@ import pytest
 
 from desloppify.languages import discovery as discovery_mod
 from desloppify.languages import registry_state
-from desloppify.languages.framework.discovery import load_all, raise_load_errors
+from desloppify.languages._framework.discovery import load_all, raise_load_errors
 
 
 def test_raise_load_errors_includes_module_name_and_exception_type(monkeypatch):

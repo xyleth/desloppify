@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
@@ -20,7 +22,35 @@ from .render import (
 from .scope import load_matches, resolve_noise, resolve_show_scope
 
 
-def cmd_show(args) -> None:
+def _show_concerns(state: dict, lang_name: str | None) -> None:
+    """Render current design concerns from mechanical signals."""
+    from desloppify.engine.concerns import generate_concerns
+
+    concerns = generate_concerns(state, lang_name=lang_name)
+    if not concerns:
+        print(colorize("  No design concerns detected.", "green"))
+        return
+
+    print(colorize(f"\n  {len(concerns)} design concern(s):\n", "bold"))
+    dismissals = state.get("concern_dismissals", {})
+
+    for i, c in enumerate(concerns, 1):
+        print(colorize(f"  {i}. [{c.type}] {c.file}", "cyan"))
+        print(f"     {c.summary}")
+        for ev in c.evidence:
+            print(colorize(f"       - {ev}", "dim"))
+        print(colorize(f"     ? {c.question}", "yellow"))
+
+        # Check if previously dismissed (but resurface due to changed findings).
+        prev = dismissals.get(c.fingerprint)
+        if isinstance(prev, dict):
+            reasoning = prev.get("reasoning", "")
+            if reasoning:
+                print(colorize(f"     (previously dismissed: {reasoning})", "dim"))
+        print()
+
+
+def cmd_show(args: argparse.Namespace) -> None:
     """Show all findings for a file, directory, detector, or pattern."""
     runtime = command_runtime(args)
     state = runtime.state
@@ -32,6 +62,13 @@ def cmd_show(args) -> None:
     stale_warning = check_tool_staleness(state)
     if stale_warning:
         print(colorize(f"  {stale_warning}", "yellow"))
+
+    # Handle "show concerns" as a special view.
+    pattern_raw = getattr(args, "pattern", "")
+    if pattern_raw and pattern_raw.strip().lower() == "concerns":
+        lang = resolve_lang(args)
+        _show_concerns(state, lang.name if lang else None)
+        return
 
     show_code = getattr(args, "code", False)
     chronic = getattr(args, "chronic", False)

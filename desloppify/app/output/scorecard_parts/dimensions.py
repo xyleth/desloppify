@@ -216,7 +216,6 @@ def prepare_scorecard_dimensions(state: dict) -> list[tuple[str, dict]]:
                         "issues": 0,
                         "tier": 3,
                         "detectors": {},
-                        "not_scanned": True,
                     }
             selected.append((name, data))
 

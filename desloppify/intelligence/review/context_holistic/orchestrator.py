@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.intelligence.review.context_internal.structure import (
+from desloppify.intelligence.review._context.structure import (
     compute_structure_context,
 )
 from desloppify.intelligence.review.context_signals.ai import gather_ai_debt_signals

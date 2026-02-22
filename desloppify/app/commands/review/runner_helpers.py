@@ -284,7 +284,7 @@ def execute_batches(
                 idx = futures[future]
                 try:
                     code = future.result()
-                except (RuntimeError, OSError, ValueError, Exception) as exc:
+                except Exception as exc:  # future.result() can raise any exception from the batch runner
                     safe_write_text_fn(log_files[idx], f"Runner exception:\n{exc}\n")
                     failures.append(idx)
                     continue

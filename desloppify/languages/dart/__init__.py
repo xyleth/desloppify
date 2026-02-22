@@ -25,19 +25,15 @@ from desloppify.languages.dart.review import (
     api_surface,
     module_patterns,
 )
-from desloppify.languages.framework.base.phase_builders import (
+from desloppify.languages._framework.treesitter.phases import all_treesitter_phases
+from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
+    detector_phase_signature,
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
-from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
-
-
-def _get_dart_area(filepath: str) -> str:
-    parts = [part for part in filepath.replace("\\", "/").split("/") if part]
-    if len(parts) > 1:
-        return "/".join(parts[:2])
-    return parts[0] if parts else filepath
+from desloppify.core._internal.text_utils import get_area
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 
 
 DART_ENTRY_PATTERNS = [
@@ -81,12 +77,14 @@ class DartConfig(LangConfig):
             phases=[
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
+                *all_treesitter_phases("dart"),
+                detector_phase_signature(),
                 detector_phase_test_coverage(),
                 detector_phase_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers={},
-            get_area=_get_dart_area,
+            get_area=get_area,
             detect_commands=get_detect_commands(),
             boundaries=[],
             typecheck_cmd="dart analyze",

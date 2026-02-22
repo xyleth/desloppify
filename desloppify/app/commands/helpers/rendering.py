@@ -43,11 +43,11 @@ def print_replacement_groups(
 def print_ranked_actions(actions: list[dict], *, limit: int = 3) -> bool:
     """Print the highest-impact narrative actions and return True when shown."""
     ranked = sorted(
-        [action for action in actions if int(action.get("count", 0) or 0) > 0],
+        [action for action in actions if int(action.get("count", 0)) > 0],
         key=lambda action: (
-            -float(action.get("impact", 0.0) or 0.0),
-            -int(action.get("count", 0) or 0),
-            int(action.get("priority", 999) or 999),
+            -float(action.get("impact", 0.0)),
+            -int(action.get("count", 0)),
+            int(action.get("priority", 999)),
         ),
     )
     if not ranked:
@@ -55,7 +55,7 @@ def print_ranked_actions(actions: list[dict], *, limit: int = 3) -> bool:
     print(colorize("  Biggest things impacting score:", "cyan"))
     for action in ranked[:limit]:
         detector = action.get("detector", "unknown")
-        count = int(action.get("count", 0) or 0)
+        count = int(action.get("count", 0))
         command = action.get("command", "desloppify next")
         print(colorize(f"    - {detector}: {count} open — `{command}`", "dim"))
     return True

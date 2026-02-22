@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from desloppify.engine.detectors.base import ComplexitySignal
-from desloppify.languages._shared.phases_common import (
+from desloppify.languages._framework.base.shared_phases import (
     run_coupling_phase,
     run_structural_phase,
 )
-from desloppify.languages.framework.base.types import LangConfig
+from desloppify.languages._framework.runtime import LangRun
 from desloppify.languages.gdscript.detectors.deps import build_dep_graph
 from desloppify.utils import log
 
@@ -36,7 +36,7 @@ GDSCRIPT_COMPLEXITY_SIGNALS = [
 ]
 
 
-def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_structural(path: Path, lang: LangRun) -> tuple[list[dict], dict[str, int]]:
     """Run structural detectors (large/complexity/flat directories)."""
     return run_structural_phase(
         path,
@@ -46,7 +46,7 @@ def _phase_structural(path: Path, lang: LangConfig) -> tuple[list[dict], dict[st
     )
 
 
-def _phase_coupling(path: Path, lang: LangConfig) -> tuple[list[dict], dict[str, int]]:
+def _phase_coupling(path: Path, lang: LangRun) -> tuple[list[dict], dict[str, int]]:
     """Run coupling-oriented detectors against GDScript references."""
     return run_coupling_phase(
         path,

@@ -13,7 +13,7 @@ from desloppify.intelligence.review.dimensions.validation import (
 
 _LANG_DIR = Path(__file__).resolve().parents[3] / "languages"
 _LANG_DATA_SUBDIR = "review_data"
-_DATA_DIR = _LANG_DIR / "_shared" / _LANG_DATA_SUBDIR
+_DATA_DIR = _LANG_DIR / "_framework" / _LANG_DATA_SUBDIR
 
 # Canonical filename for the unified dimensions payload.
 _DIMENSIONS_FILE = "dimensions.json"
@@ -156,7 +156,7 @@ def _load_payload_for_lang(
     """Load payload for a language using shared-base + optional language overlay.
 
     Resolution order:
-    1) Start from shared base payload in ``lang/_shared/review_data``.
+    1) Start from shared base payload in ``lang/framework/review_data``.
     2) If language override payload exists, patch the selected base.
     """
     base_payload = _load_json_payload(filename)

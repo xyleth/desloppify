@@ -16,6 +16,11 @@ def log_best_effort_failure(
     logger.debug("Best-effort fallback failed while trying to %s: %s", action, exc)
 
 
+def print_error(message: str) -> None:
+    """Print a user-facing error message to stderr in a consistent format."""
+    print(colorize(f"  Error: {message}", "red"), file=sys.stderr)
+
+
 def warn_best_effort(message: str) -> None:
     """Emit a consistent user-facing warning for non-fatal fallback failures."""
     print(colorize(f"  WARNING: {message}", "red"), file=sys.stderr)
@@ -37,6 +42,7 @@ def restore_files_best_effort(
 
 __all__ = [
     "log_best_effort_failure",
+    "print_error",
     "restore_files_best_effort",
     "warn_best_effort",
 ]

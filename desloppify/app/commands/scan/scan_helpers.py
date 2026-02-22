@@ -84,7 +84,6 @@ def _collect_codebase_metrics(lang, path: Path) -> dict | None:
             total_loc += len(Path(filepath).read_text().splitlines())
             dirs.add(str(Path(filepath).parent))
         except (OSError, UnicodeDecodeError) as exc:
-            total_loc += 0
             logger.debug(
                 "Skipping unreadable file %s while collecting scan metrics: %s",
                 filepath,

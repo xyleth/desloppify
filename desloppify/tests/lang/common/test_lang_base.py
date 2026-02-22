@@ -1,10 +1,10 @@
 """Tests for framework finding factories and structural signal helpers."""
 
-from desloppify.languages.framework.base.structural import (
+from desloppify.languages._framework.base.structural import (
     add_structural_signal,
     merge_structural_signals,
 )
-from desloppify.languages.framework.finding_factories import (
+from desloppify.languages._framework.finding_factories import (
     SMELL_TIER_MAP,
     make_cycle_findings,
     make_dupe_findings,

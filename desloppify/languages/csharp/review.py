@@ -4,8 +4,23 @@ from __future__ import annotations
 
 import re
 
-from desloppify.languages._shared.review_dimensions import HOLISTIC_REVIEW_DIMENSIONS
 from desloppify.utils import rel
+
+HOLISTIC_REVIEW_DIMENSIONS: list[str] = [
+    "cross_module_architecture",
+    "convention_outlier",
+    "error_consistency",
+    "abstraction_fitness",
+    "api_surface_coherence",
+    "authorization_consistency",
+    "ai_generated_debt",
+    "incomplete_migration",
+    "package_organization",
+    "high_level_elegance",
+    "mid_level_elegance",
+    "low_level_elegance",
+    "design_coherence",
+]
 
 REVIEW_GUIDANCE = {
     "patterns": [

@@ -1,14 +1,14 @@
-"""Direct tests for state_internal modules flagged as transitive-only."""
+"""Direct tests for _state modules flagged as transitive-only."""
 
 from __future__ import annotations
 
 import json
 
-import desloppify.engine.state_internal.filtering as filtering_mod
-import desloppify.engine.state_internal.noise as noise_mod
-import desloppify.engine.state_internal.persistence as persistence_mod
-import desloppify.engine.state_internal.resolution as resolution_mod
-import desloppify.engine.state_internal.schema as schema_mod
+import desloppify.engine._state.filtering as filtering_mod
+import desloppify.engine._state.noise as noise_mod
+import desloppify.engine._state.persistence as persistence_mod
+import desloppify.engine._state.resolution as resolution_mod
+import desloppify.engine._state.schema as schema_mod
 
 
 def test_noise_budget_resolution_and_capping():
@@ -120,7 +120,8 @@ def test_match_and_resolve_findings_updates_state():
     assert resolved["resolution_attestation"]["scan_verified"] is False
 
 
-def test_resolve_fixed_review_resets_related_subjective_assessment():
+def test_resolve_fixed_review_marks_assessment_stale_preserves_score():
+    """Resolving a review finding as fixed marks assessment stale but keeps score."""
     state = schema_mod.empty_state()
     review_finding = filtering_mod.make_finding(
         "review",
@@ -147,14 +148,18 @@ def test_resolve_fixed_review_resets_related_subjective_assessment():
 
     naming = state["subjective_assessments"]["naming_quality"]
     logic = state["subjective_assessments"]["logic_clarity"]
-    assert naming["score"] == 0.0
+    # Score preserved (not zeroed) — only a fresh review changes scores.
+    assert naming["score"] == 82
     assert naming["needs_review_refresh"] is True
-    assert naming["refresh_reason"] == "review_finding_resolved"
-    assert naming["assessed_at"] is not None
+    assert naming["refresh_reason"] == "review_finding_fixed"
+    assert naming["stale_since"] is not None
+    # Untouched dimension is unchanged.
     assert logic["score"] == 74
+    assert "needs_review_refresh" not in logic
 
 
-def test_resolve_non_fixed_review_does_not_reset_subjective_assessment():
+def test_resolve_wontfix_review_marks_assessment_stale():
+    """Resolving a review finding as wontfix also marks assessment stale."""
     state = schema_mod.empty_state()
     review_finding = filtering_mod.make_finding(
         "review",
@@ -176,6 +181,68 @@ def test_resolve_non_fixed_review_does_not_reset_subjective_assessment():
         status="wontfix",
         note="intentional",
         attestation="I have actually reviewed this and I am not gaming the score.",
+    )
+
+    naming = state["subjective_assessments"]["naming_quality"]
+    assert naming["score"] == 82
+    assert naming["needs_review_refresh"] is True
+    assert naming["refresh_reason"] == "review_finding_wontfix"
+    assert naming["stale_since"] is not None
+
+
+def test_resolve_false_positive_review_marks_assessment_stale():
+    """Resolving a review finding as false_positive also marks assessment stale."""
+    state = schema_mod.empty_state()
+    review_finding = filtering_mod.make_finding(
+        "review",
+        "pkg/a.py",
+        "naming",
+        tier=3,
+        confidence="high",
+        summary="naming issue",
+        detail={"dimension": "naming_quality"},
+    )
+    state["findings"] = {review_finding["id"]: review_finding}
+    state["subjective_assessments"] = {
+        "naming_quality": {"score": 82, "source": "holistic"}
+    }
+
+    resolution_mod.resolve_findings(
+        state,
+        "review::",
+        status="false_positive",
+        note="not a real issue",
+        attestation="This is not an actual defect.",
+    )
+
+    naming = state["subjective_assessments"]["naming_quality"]
+    assert naming["score"] == 82
+    assert naming["needs_review_refresh"] is True
+    assert naming["refresh_reason"] == "review_finding_false_positive"
+
+
+def test_resolve_non_review_finding_does_not_mark_stale():
+    """Resolving a non-review finding does not touch subjective assessments."""
+    state = schema_mod.empty_state()
+    finding = filtering_mod.make_finding(
+        "unused",
+        "pkg/a.py",
+        "name",
+        tier=2,
+        confidence="high",
+        summary="unused name",
+    )
+    state["findings"] = {finding["id"]: finding}
+    state["subjective_assessments"] = {
+        "naming_quality": {"score": 82, "source": "holistic"}
+    }
+
+    resolution_mod.resolve_findings(
+        state,
+        "unused",
+        status="fixed",
+        note="done",
+        attestation="Fixed it.",
     )
 
     naming = state["subjective_assessments"]["naming_quality"]

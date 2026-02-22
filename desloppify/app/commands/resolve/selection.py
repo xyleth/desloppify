@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 
 from desloppify import state as state_mod
-from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE
+from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
 from desloppify.utils import colorize
 
 _REQUIRED_ATTESTATION_PHRASES = ("i have actually", "not gaming")
@@ -87,15 +87,9 @@ def _validate_resolve_inputs(args: argparse.Namespace, attestation: str | None) 
         sys.exit(1)
 
 
-def _previous_score_snapshot(
-    state: dict,
-) -> tuple[float | None, float | None, float | None, float | None]:
-    return (
-        state_mod.get_overall_score(state),
-        state_mod.get_objective_score(state),
-        state_mod.get_strict_score(state),
-        state_mod.get_verified_strict_score(state),
-    )
+def _previous_score_snapshot(state: dict) -> state_mod.ScoreSnapshot:
+    """Load a score snapshot for comparison after resolve operations."""
+    return state_mod.score_snapshot(state)
 
 
 def _preview_resolve_count(state: dict, patterns: list[str]) -> int:

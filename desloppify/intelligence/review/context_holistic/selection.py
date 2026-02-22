@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from pathlib import Path
 
 from desloppify.intelligence.review.context import file_excerpt, importer_count
-from desloppify.intelligence.review.context_internal.patterns import (
+from desloppify.intelligence.review._context.patterns import (
     ERROR_PATTERNS as _ERROR_PATTERNS,
 )
-from desloppify.intelligence.review.context_internal.patterns import (
+from desloppify.intelligence.review._context.patterns import (
     FUNC_NAME_RE as _FUNC_NAME_RE,
 )
-from desloppify.intelligence.review.context_internal.patterns import (
+from desloppify.intelligence.review._context.patterns import (
     extract_imported_names as _extract_imported_names,
 )
 from desloppify.utils import rel, resolve_path
+
+logger = logging.getLogger(__name__)
 
 
 def select_holistic_files(path: Path, lang: object, files: list[str] | None) -> list[str]:
@@ -107,7 +110,7 @@ def _sibling_behavior_context(
                     return f"{parts[0]}/"
                 return None
             except ValueError:
-                pass
+                logger.debug("Path %s not relative to root %s, using fallback bucket", filepath, root)
         parts = Path(filepath).parts
         if len(parts) < 2:
             return None
@@ -119,7 +122,7 @@ def _sibling_behavior_context(
             try:
                 return target.relative_to(root).as_posix()
             except ValueError:
-                pass
+                logger.debug("Path %s not relative to root %s, using rel() fallback", filepath, root)
         return rel(filepath)
 
     dir_imports: dict[str, dict[str, set[str]]] = {}

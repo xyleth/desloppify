@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, c, find_ts_files, print_table, rel
+from desloppify.utils import PROJECT_ROOT, colorize, find_ts_files, print_table, rel
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +98,9 @@ def cmd_props(args: argparse.Namespace) -> None:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
     if not entries:
-        print(c("No bloated prop interfaces found.", "green"))
+        print(colorize("No bloated prop interfaces found.", "green"))
         return
-    print(c(f"\nBloated prop interfaces (>14 props): {len(entries)}\n", "bold"))
+    print(colorize(f"\nBloated prop interfaces (>14 props): {len(entries)}\n", "bold"))
     rows = []
     for e in entries[: args.top]:
         rows.append(

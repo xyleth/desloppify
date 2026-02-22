@@ -16,63 +16,61 @@ def _is_test_file(filepath: str) -> bool:
     return normalized.startswith("tests/") or "/tests/" in normalized
 
 
-def _detect_monster_functions(
-    filepath: str, node: ast.AST, smell_counts: dict[str, list]
-):
+def _detect_monster_functions(filepath: str, node: ast.AST) -> list[dict]:
     """Flag functions longer than 150 LOC."""
     if not (hasattr(node, "end_lineno") and node.end_lineno):
-        return
+        return []
     loc = node.end_lineno - node.lineno + 1
     if loc > 150:
-        smell_counts["monster_function"].append(
+        return [
             {
                 "file": filepath,
                 "line": node.lineno,
                 "content": f"{node.name}() — {loc} LOC",
             }
-        )
+        ]
+    return []
 
 
-def _detect_dead_functions(filepath: str, node: ast.AST, smell_counts: dict[str, list]):
+def _detect_dead_functions(filepath: str, node: ast.AST) -> list[dict]:
     """Flag functions whose body is only pass, return, or return None."""
     if node.decorator_list:
-        return
+        return []
     body = node.body
     if len(body) == 1:
         stmt = body[0]
         if isinstance(stmt, ast.Pass) or _is_return_none(stmt):
-            smell_counts["dead_function"].append(
+            return [
                 {
                     "file": filepath,
                     "line": node.lineno,
                     "content": f"{node.name}() — body is only {ast.dump(stmt)[:40]}",
                 }
-            )
+            ]
     elif len(body) == 2:
         first, second = body
         if not _is_docstring(first):
-            return
+            return []
         if isinstance(second, ast.Pass):
             desc = "docstring + pass"
         elif _is_return_none(second):
             desc = "docstring + return None"
         else:
-            return
-        smell_counts["dead_function"].append(
+            return []
+        return [
             {
                 "file": filepath,
                 "line": node.lineno,
                 "content": f"{node.name}() — {desc}",
             }
-        )
+        ]
+    return []
 
 
-def _detect_deferred_imports(
-    filepath: str, node: ast.AST, smell_counts: dict[str, list]
-):
+def _detect_deferred_imports(filepath: str, node: ast.AST) -> list[dict]:
     """Flag function-level imports (possible circular import workarounds)."""
     if _is_test_file(filepath):
-        return
+        return []
     _SKIP_MODULES = ("typing", "typing_extensions", "__future__")
     for child in ast.walk(node):
         if (
@@ -86,35 +84,36 @@ def _detect_deferred_imports(
         names = ", ".join(a.name for a in child.names[:3])
         if len(child.names) > 3:
             names += f", +{len(child.names) - 3}"
-        smell_counts["deferred_import"].append(
+        return [
             {
                 "file": filepath,
                 "line": child.lineno,
                 "content": f"import {module or names} inside {node.name}()",
             }
-        )
-        break  # Only flag once per function
+        ]
+    return []
 
 
-def _detect_inline_classes(filepath: str, node: ast.AST, smell_counts: dict[str, list]):
+def _detect_inline_classes(filepath: str, node: ast.AST) -> list[dict]:
     """Flag classes defined inside functions."""
+    results: list[dict] = []
     for child in node.body:
         if isinstance(child, ast.ClassDef):
-            smell_counts["inline_class"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": child.lineno,
                     "content": f"class {child.name} defined inside {node.name}()",
                 }
             )
+    return results
 
 
 def _detect_lru_cache_mutable(
     filepath: str,
     node: ast.AST,
     tree: ast.Module,
-    smell_counts: dict[str, list],
-):
+) -> list[dict]:
     """Flag @lru_cache/@cache functions that reference module-level mutable variables.
 
     Finds globals referenced in the function body that aren't in the parameter list,
@@ -131,7 +130,7 @@ def _detect_lru_cache_mutable(
         elif isinstance(dec, ast.Attribute) and dec.attr in ("lru_cache", "cache"):
             has_cache = True
     if not has_cache:
-        return
+        return []
 
     # Get parameter names
     param_names = set()
@@ -168,11 +167,11 @@ def _detect_lru_cache_mutable(
             and child.id in module_mutables
             and child.id not in param_names
         ):
-            smell_counts["lru_cache_mutable"].append(
+            return [
                 {
                     "file": filepath,
                     "line": node.lineno,
                     "content": f"@lru_cache on {node.name}() reads mutable global '{child.id}'",
                 }
-            )
-            return  # One warning per function is enough
+            ]
+    return []

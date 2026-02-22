@@ -11,7 +11,8 @@ from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.app.commands.helpers.state import state_path
 from desloppify.core import config as config_mod
-from desloppify.engine.work_queue_internal.core import ATTEST_EXAMPLE
+from desloppify.core.fallbacks import print_error
+from desloppify.engine._work_queue.core import ATTEST_EXAMPLE
 from desloppify.intelligence import narrative as narrative_mod
 from desloppify.utils import colorize
 
@@ -39,17 +40,15 @@ def cmd_resolve(args: argparse.Namespace) -> None:
     attestation = getattr(args, "attest", None)
     _validate_resolve_inputs(args, attestation)
 
-    sp = state_path(args)
-    state = state_mod.load_state(sp)
+    state_file = state_path(args)
+    state = state_mod.load_state(state_file)
     _enforce_batch_wontfix_confirmation(
         state,
         args,
         attestation=attestation,
         resolve_all_patterns_fn=_resolve_all_patterns,
     )
-    prev_overall, prev_objective, prev_strict, prev_verified = _previous_score_snapshot(
-        state
-    )
+    prev = _previous_score_snapshot(state)
     prev_subjective_scores = {
         str(dim): _assessment_score(payload)
         for dim, payload in (state.get("subjective_assessments") or {}).items()
@@ -61,20 +60,25 @@ def cmd_resolve(args: argparse.Namespace) -> None:
         print(colorize(f"No open findings matching: {' '.join(args.patterns)}", "yellow"))
         return
 
-    state_mod.save_state(state, sp)
+    state_mod.save_state(state, state_file)
     _print_resolve_summary(status=args.status, all_resolved=all_resolved)
     _print_wontfix_batch_warning(
         state,
         status=args.status,
         resolved_count=len(all_resolved),
     )
+    has_review_findings = any(
+        state["findings"].get(fid, {}).get("detector") == "review"
+        for fid in all_resolved
+    )
     _print_score_movement(
         status=args.status,
-        prev_overall=prev_overall,
-        prev_objective=prev_objective,
-        prev_strict=prev_strict,
-        prev_verified=prev_verified,
+        prev_overall=prev.overall,
+        prev_objective=prev.objective,
+        prev_strict=prev.strict,
+        prev_verified=prev.verified,
         state=state,
+        has_review_findings=has_review_findings,
     )
     _print_subjective_reset_hint(
         args=args,
@@ -100,10 +104,10 @@ def cmd_resolve(args: argparse.Namespace) -> None:
             status=args.status,
             resolved=all_resolved,
             next_command=next_command,
-            prev_overall=prev_overall,
-            prev_objective=prev_objective,
-            prev_strict=prev_strict,
-            prev_verified=prev_verified,
+            prev_overall=prev.overall,
+            prev_objective=prev.objective,
+            prev_strict=prev.strict,
+            prev_verified=prev.verified,
             attestation=attestation,
             narrative=narrative,
             state=state,
@@ -118,12 +122,16 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
         _show_attestation_requirement("Ignore", attestation, ATTEST_EXAMPLE)
         sys.exit(1)
 
-    sp = state_path(args)
-    state = state_mod.load_state(sp)
+    state_file = state_path(args)
+    state = state_mod.load_state(state_file)
 
     config = command_runtime(args).config
     config_mod.add_ignore_pattern(config, args.pattern)
-    config_mod.save_config(config)
+    try:
+        config_mod.save_config(config)
+    except OSError as e:
+        print_error(f"could not save config: {e}")
+        sys.exit(1)
 
     removed = state_mod.remove_ignored_findings(state, args.pattern)
     state.setdefault("attestation_log", []).append(
@@ -135,26 +143,23 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
             "affected": removed,
         }
     )
-    state_mod.save_state(state, sp)
+    state_mod.save_state(state, state_file)
 
     print(colorize(f"Added ignore pattern: {args.pattern}", "green"))
     if removed:
         print(f"  Removed {removed} matching findings from state.")
-    overall = state_mod.get_overall_score(state)
-    objective = state_mod.get_objective_score(state)
-    strict = state_mod.get_strict_score(state)
-    verified = state_mod.get_verified_strict_score(state)
+    scores = state_mod.score_snapshot(state)
     if (
-        overall is not None
-        and objective is not None
-        and strict is not None
-        and verified is not None
+        scores.overall is not None
+        and scores.objective is not None
+        and scores.strict is not None
+        and scores.verified is not None
     ):
         print(
-            f"  Scores: overall {overall:.1f}/100"
-            + colorize(f"  objective: {objective:.1f}/100", "dim")
-            + colorize(f"  strict: {strict:.1f}/100", "dim")
-            + colorize(f"  verified: {verified:.1f}/100", "dim")
+            f"  Scores: overall {scores.overall:.1f}/100"
+            + colorize(f"  objective: {scores.objective:.1f}/100", "dim")
+            + colorize(f"  strict: {scores.strict:.1f}/100", "dim")
+            + colorize(f"  verified: {scores.verified:.1f}/100", "dim")
         )
     print()
 
@@ -169,10 +174,10 @@ def cmd_ignore_pattern(args: argparse.Namespace) -> None:
             "command": "ignore",
             "pattern": args.pattern,
             "removed": removed,
-            "overall_score": overall,
-            "objective_score": objective,
-            "strict_score": strict,
-            "verified_strict_score": verified,
+            "overall_score": scores.overall,
+            "objective_score": scores.objective,
+            "strict_score": scores.strict,
+            "verified_strict_score": scores.verified,
             "attestation": attestation,
             "narrative": narrative,
         }

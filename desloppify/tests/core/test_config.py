@@ -105,12 +105,12 @@ class TestLoadSaveConfig:
         cfg = load_config(p)
         assert cfg["badge_path"] == "scorecard.png"
 
-    def test_legacy_assets_badge_path_migrates_to_root_default(self, tmp_path):
+    def test_nested_badge_path_preserved(self, tmp_path):
         p = tmp_path / "config.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps({"badge_path": "assets/scorecard.png"}))
         cfg = load_config(p)
-        assert cfg["badge_path"] == "scorecard.png"
+        assert cfg["badge_path"] == "assets/scorecard.png"
 
 
 # ===========================================================================

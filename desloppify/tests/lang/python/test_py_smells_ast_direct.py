@@ -14,13 +14,12 @@ def noop():
 """
     tree = ast.parse(source)
     node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
-    smell_counts = {"dead_function": []}
 
-    node_detectors._detect_dead_functions("file.py", node, smell_counts)
+    results = node_detectors._detect_dead_functions("file.py", node)
 
-    assert len(smell_counts["dead_function"]) == 1
-    assert smell_counts["dead_function"][0]["file"] == "file.py"
-    assert "noop()" in smell_counts["dead_function"][0]["content"]
+    assert len(results) == 1
+    assert results[0]["file"] == "file.py"
+    assert "noop()" in results[0]["content"]
 
 
 def test_detect_monster_function_ignores_small_functions():
@@ -30,8 +29,7 @@ def small():
 """
     tree = ast.parse(source)
     node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
-    smell_counts = {"monster_function": []}
 
-    node_detectors._detect_monster_functions("file.py", node, smell_counts)
+    results = node_detectors._detect_monster_functions("file.py", node)
 
-    assert smell_counts["monster_function"] == []
+    assert results == []

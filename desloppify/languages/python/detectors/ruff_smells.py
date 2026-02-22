@@ -1,21 +1,26 @@
-"""Supplemental Python smell detection via ruff (B/E/W-series rules).
+"""Python smell detection via ruff (B/BLE/E/F/PGH/PLW/RUF/W-series rules).
 
-Runs ``ruff check`` with a targeted rule set that covers patterns not already
-detected by the existing regex/AST smells in smells.py. Produces smell entries
-in the same format as detect_smells() so they flow through make_smell_findings()
-without any plumbing changes.
+Runs ``ruff check`` with a targeted rule set and maps each ruff code to a
+desloppify smell ID. Produces smell entries in the same format as detect_smells()
+so they flow through make_smell_findings() without any plumbing changes.
 
-Falls back gracefully to [] when ruff is not installed, allowing the existing
-smells to remain the only source.
+Falls back gracefully to [] when ruff is not installed.
 
-Rules chosen are deliberately non-overlapping with smells.py:
-  B007  – unused loop control variable
-  B023  – function definition does not bind loop variable
-  B026  – star-arg after keyword argument
-  B904  – raise inside except without ``from err``
-  E711  – comparison to None with == / !=
-  E712  – comparison to True/False with == / !=
-  W605  – invalid escape sequence (e.g. "\\d" instead of r"\\d")
+Rules (non-overlapping with remaining custom smells in smells.py):
+  B006     – mutable default argument (replaces regex in smells.py)
+  B007     – unused loop control variable
+  B023     – function definition does not bind loop variable
+  B026     – star-arg after keyword argument
+  B904     – raise inside except without ``from err``
+  BLE001   – blind exception catch (replaces broad_except regex)
+  E711     – comparison to None with == / !=
+  E712     – comparison to True/False with == / !=
+  E722     – bare except (replaces bare_except regex)
+  F403     – star import (replaces star_import regex; keep star_import_no_all AST)
+  PGH003   – blanket type: ignore (replaces type_ignore regex)
+  PLW0603  – global keyword (replaces global_keyword regex)
+  RUF012   – mutable class variable (replaces AST mutable_class_var)
+  W605     – invalid escape sequence (e.g. "\\d" instead of r"\\d")
 """
 
 from __future__ import annotations
@@ -33,12 +38,19 @@ logger = logging.getLogger(__name__)
 
 # Maps ruff code → (smell_id, label, severity)
 _RULE_MAP: dict[str, tuple[str, str, str]] = {
+    "B006": ("mutable_default", "Mutable default argument (list/dict/set literal)", "high"),
     "B007": ("unused_loop_var", "Unused loop control variable", "medium"),
     "B023": ("func_in_loop", "Function definition doesn't bind loop variable", "high"),
     "B026": ("star_after_keyword", "Star-arg unpacking after keyword argument", "high"),
     "B904": ("raise_without_from", "Raise inside except without `from err`", "medium"),
+    "BLE001": ("broad_except", "Broad except — check library exceptions before narrowing", "medium"),
     "E711": ("none_comparison", "Comparison to None with == / !=  (use `is`)", "medium"),
     "E712": ("bool_comparison", "Comparison to True/False with == / != (use `is`)", "low"),
+    "E722": ("bare_except", "Bare except clause (catches everything including SystemExit)", "high"),
+    "F403": ("star_import", "Star import (from X import *)", "medium"),
+    "PGH003": ("type_ignore", "type: ignore comment", "medium"),
+    "PLW0603": ("global_keyword", "Global keyword usage", "medium"),
+    "RUF012": ("mutable_class_var", "Class-level mutable default (shared across instances)", "high"),
     "W605": ("invalid_escape", "Invalid escape sequence (use raw string or \\\\)", "medium"),
 }
 
@@ -75,6 +87,9 @@ def detect_with_ruff_smells(path: Path) -> list[dict] | None:
         )
     except FileNotFoundError:
         logger.debug("ruff smells: ruff not found — skipping supplemental smell detection")
+        return None
+    except OSError as exc:
+        logger.debug("ruff smells: OS error running ruff: %s", exc)
         return None
     except subprocess.TimeoutExpired:
         logger.debug("ruff smells: timed out")

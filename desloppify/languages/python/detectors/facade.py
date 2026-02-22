@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from desloppify.languages.framework.facade_common import detect_reexport_facades_common
+from desloppify.languages._framework.facade_common import detect_reexport_facades_common
 
 
 def is_py_facade(filepath: str) -> dict | None:

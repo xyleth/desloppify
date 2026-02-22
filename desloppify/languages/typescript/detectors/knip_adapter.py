@@ -55,8 +55,6 @@ def _run_knip(path: Path, timeout: int = 120) -> dict | None:
 
 def _normalize_path(raw: str, scan_path: Path) -> str:
     """Return a path relative to PROJECT_ROOT, scoped to scan_path."""
-    from desloppify.utils import PROJECT_ROOT
-
     p = Path(raw)
     if not p.is_absolute():
         p = (scan_path / p).resolve()
@@ -88,16 +86,28 @@ def detect_with_knip(path: Path) -> list[dict] | None:
             name = export.get("name", "")
             if not name:
                 continue
-            pos = export.get("pos", {}).get("start", {})
-            line = pos.get("line", 0) if isinstance(pos, dict) else 0
+            raw_pos = export.get("pos", {})
+            if isinstance(raw_pos, dict):
+                start = raw_pos.get("start", {})
+                line = start.get("line", 0) if isinstance(start, dict) else (start if isinstance(start, int) else 0)
+            elif isinstance(raw_pos, int):
+                line = raw_pos
+            else:
+                line = 0
             entries.append({"file": norm, "name": name, "line": line, "kind": "export"})
 
         for export in issue.get("types", []):
             name = export.get("name", "")
             if not name:
                 continue
-            pos = export.get("pos", {}).get("start", {})
-            line = pos.get("line", 0) if isinstance(pos, dict) else 0
+            raw_pos = export.get("pos", {})
+            if isinstance(raw_pos, dict):
+                start = raw_pos.get("start", {})
+                line = start.get("line", 0) if isinstance(start, dict) else (start if isinstance(start, int) else 0)
+            elif isinstance(raw_pos, int):
+                line = raw_pos
+            else:
+                line = 0
             entries.append({"file": norm, "name": name, "line": line, "kind": "type"})
 
     logger.debug("knip: %d dead exports", len(entries))

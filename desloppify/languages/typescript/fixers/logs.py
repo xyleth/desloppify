@@ -1,20 +1,15 @@
 """Debug log fixer: removes tagged console.log lines and cleans up aftermath."""
 
-import logging
 import re
 import sys
-from collections import defaultdict
-from pathlib import Path
 
-from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.fixers.common import (
+    apply_fixer,
     collapse_blank_lines,
     extract_body_between_braces,
     find_balanced_end,
 )
-from desloppify.utils import PROJECT_ROOT, c, rel, safe_write_text
-
-logger = logging.getLogger(__name__)
+from desloppify.utils import colorize, rel
 
 
 def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
@@ -27,82 +22,50 @@ def fix_debug_logs(entries: list[dict], *, dry_run: bool = False) -> list[dict]:
         dry_run: If True, don't write files.
 
     Returns:
-        List of {file, tags: [str], lines_removed: int} dicts.
+        List of {file, tags: [str], lines_removed: int, log_count: int} dicts.
     """
-    by_file: dict[str, list[dict]] = defaultdict(list)
+    entries_by_file: dict[str, list[dict]] = {}
     for e in entries:
-        by_file[e["file"]].append(e)
+        entries_by_file.setdefault(e["file"], []).append(e)
 
-    results = []
-    skipped_files: list[tuple[str, str]] = []
-    for filepath, file_entries in sorted(by_file.items()):
-        try:
-            p = (
-                Path(filepath)
-                if Path(filepath).is_absolute()
-                else PROJECT_ROOT / filepath
-            )
-            original = p.read_text()
-            lines = original.splitlines(keepends=True)
-
-            lines_to_remove: set[int] = set()  # 0-indexed
-            for e in file_entries:
-                start = e["line"] - 1  # convert to 0-indexed
-                if start >= len(lines):
-                    continue
-                # Find the extent of this console.log call (may span lines)
-                end = find_balanced_end(lines, start, track="parens")
-                if end is None:
-                    print(
-                        c(
-                            f"  Warn: skipping {rel(filepath)}:{e['line']} — could not find statement end",
-                            "yellow",
-                        ),
-                        file=sys.stderr,
-                    )
-                    continue
-                for idx in range(start, end + 1):
-                    lines_to_remove.add(idx)
-                # Remove preceding debug annotation comments (up to 3 lines)
-                _mark_orphaned_comments(lines, start, lines_to_remove)
-
-            # Find variable declarations only used in removed log lines
-            dead_vars = _find_dead_log_variables(lines, lines_to_remove)
-            lines_to_remove |= dead_vars
-
-            new_lines = collapse_blank_lines(lines, lines_to_remove)
-
-            # Second pass: remove empty blocks left behind
-            new_lines = _remove_empty_blocks(new_lines)
-
-            new_content = "".join(new_lines)
-            if new_content != original:
-                tags = sorted(set(e["tag"] for e in file_entries))
-                removed = len(lines) - len(new_lines)
-                results.append(
-                    {
-                        "file": filepath,
-                        "tags": tags,
-                        "lines_removed": removed,
-                        "log_count": len(file_entries),
-                    }
+    def _transform(lines: list[str], file_entries: list[dict]):
+        lines_to_remove: set[int] = set()
+        for e in file_entries:
+            start = e["line"] - 1
+            if start >= len(lines):
+                continue
+            end = find_balanced_end(lines, start, track="parens")
+            if end is None:
+                print(
+                    colorize(
+                        f"  Warn: skipping {rel(e['file'])}:{e['line']} — could not find statement end",
+                        "yellow",
+                    ),
+                    file=sys.stderr,
                 )
-                if not dry_run:
-                    safe_write_text(filepath, new_content)
-        except (OSError, UnicodeDecodeError) as ex:
-            skipped_files.append((filepath, str(ex)))
-            print(c(f"  Skip {rel(filepath)}: {ex}", "yellow"), file=sys.stderr)
+                continue
+            for idx in range(start, end + 1):
+                lines_to_remove.add(idx)
+            _mark_orphaned_comments(lines, start, lines_to_remove)
 
-    if skipped_files:
-        log_best_effort_failure(
-            logger,
-            f"apply debug-log fixer across {len(skipped_files)} skipped file(s)",
-            OSError(
-                "; ".join(f"{path}: {reason}" for path, reason in skipped_files[:5])
-            ),
-        )
+        dead_vars = _find_dead_log_variables(lines, lines_to_remove)
+        lines_to_remove |= dead_vars
+        new_lines = collapse_blank_lines(lines, lines_to_remove)
+        new_lines = _remove_empty_blocks(new_lines)
+        tags = sorted(set(e.get("tag", "") for e in file_entries))
+        return new_lines, tags
 
-    return results
+    raw_results = apply_fixer(entries, _transform, dry_run=dry_run)
+    return [
+        {
+            "file": r["file"],
+            "removed": r["removed"],
+            "tags": r["removed"],
+            "lines_removed": r["lines_removed"],
+            "log_count": len(entries_by_file.get(r["file"], [])),
+        }
+        for r in raw_results
+    ]
 
 
 # ── Orphaned comment cleanup ──────────────────────────────
@@ -244,83 +207,109 @@ _EMPTY_CALLBACK_RE = re.compile(
 )
 
 
+def _try_remove_empty_use_effect(
+    lines: list[str], i: int, new_lines: list[str]
+) -> int | None:
+    """Remove empty useEffect(() => { }). Returns new index or None."""
+    stripped = lines[i].strip()
+    if not re.match(r"(?:React\.)?useEffect\s*\(\s*\(\s*\)\s*=>\s*\{", stripped):
+        return None
+    end = find_balanced_end(lines, i, track="all")
+    if end is None:
+        return None
+    body = "".join(lines[i : end + 1])
+    inner = extract_body_between_braces(body, search_after="=>")
+    if inner is None or inner.strip() != "":
+        return None
+    if new_lines and new_lines[-1].strip().startswith("//"):
+        new_lines.pop()
+    return end + 1
+
+
+def _try_remove_empty_callback(lines: list[str], i: int) -> int | None:
+    """Remove single-line .then(() => { }) / .catch((e) => { })."""
+    if _EMPTY_CALLBACK_RE.match(lines[i].strip()):
+        return i + 1
+    return None
+
+
+def _try_remove_multiline_callback(lines: list[str], i: int) -> int | None:
+    """Remove multi-line empty callback: someFunc(() => {\\n})."""
+    stripped = lines[i].strip()
+    if not re.search(r"=>\s*\{\s*$", stripped):
+        return None
+    if not re.search(r"\(\s*(?:\([^)]*\))?\s*=>\s*\{\s*$", stripped):
+        return None
+    j = i + 1
+    while j < len(lines) and lines[j].strip() == "":
+        j += 1
+    if j < len(lines) and lines[j].strip() in ("});", "},"):
+        return j + 1
+    return None
+
+
+def _try_remove_multiline_block(
+    lines: list[str], i: int, new_lines: list[str]
+) -> int | None:
+    """Remove multi-line empty if/else/else-if blocks."""
+    line = lines[i]
+    stripped = line.strip()
+    if not stripped.endswith("{"):
+        return None
+    j = i + 1
+    while j < len(lines) and lines[j].strip() == "":
+        j += 1
+    if j >= len(lines) or lines[j].strip() not in ("}", "});"):
+        return None
+
+    if re.match(r"\s*else\s*\{", stripped):
+        return j + 1
+    if re.match(r"\s*\}\s*else\s*\{", stripped):
+        indent = line[: len(line) - len(line.lstrip())]
+        new_lines.append(f"{indent}}}\n")
+        return j + 1
+    if re.match(r"\s*(?:if|else\s+if)\s*\(", stripped):
+        return j + 1
+    return None
+
+
+def _try_remove_single_empty_block(lines: list[str], i: int) -> int | None:
+    """Remove single-line empty block (if/else/else-if with empty {})."""
+    if _EMPTY_BLOCK_RE.match(lines[i].strip()):
+        return i + 1
+    return None
+
+
 def _remove_empty_blocks(lines: list[str]) -> list[str]:
     """Remove empty blocks left behind after log removal.
 
     Handles: empty if/else, empty useEffect, empty catch, empty callbacks.
     Makes multiple passes until stable.
     """
+    _handlers = [
+        lambda lines, i, out: _try_remove_empty_use_effect(lines, i, out),
+        lambda lines, i, out: _try_remove_empty_callback(lines, i),
+        lambda lines, i, out: _try_remove_multiline_callback(lines, i),
+        lambda lines, i, out: _try_remove_multiline_block(lines, i, out),
+        lambda lines, i, out: _try_remove_single_empty_block(lines, i),
+    ]
     changed = True
     while changed:
         changed = False
         new_lines: list[str] = []
         i = 0
         while i < len(lines):
-            line = lines[i]
-            stripped = line.strip()
-
-            # ── Empty useEffect / React.useEffect ──
-            if re.match(r"(?:React\.)?useEffect\s*\(\s*\(\s*\)\s*=>\s*\{", stripped):
-                end = find_balanced_end(lines, i, track="all")
-                if end is not None:
-                    body = "".join(lines[i : end + 1])
-                    inner = extract_body_between_braces(body, search_after="=>")
-                    if inner is not None and inner.strip() == "":
-                        if new_lines and new_lines[-1].strip().startswith("//"):
-                            new_lines.pop()
-                        changed = True
-                        i = end + 1
-                        continue
-
-            # ── Empty callback: .then(() => { }) or .catch((e) => { }) ──
-            if _EMPTY_CALLBACK_RE.match(stripped):
+            new_i = None
+            for handler in _handlers:
+                new_i = handler(lines, i, new_lines)
+                if new_i is not None:
+                    break
+            if new_i is not None:
                 changed = True
+                i = new_i
+            else:
+                new_lines.append(lines[i])
                 i += 1
-                continue
-
-            # ── Multi-line empty callback: someFunc(() => {\n}) ──
-            if re.search(r"=>\s*\{\s*$", stripped):
-                j = i + 1
-                while j < len(lines) and lines[j].strip() == "":
-                    j += 1
-                if j < len(lines) and lines[j].strip() in ("}", "})", "});", "},"):
-                    if re.search(r"\(\s*(?:\([^)]*\))?\s*=>\s*\{\s*$", stripped):
-                        closing = lines[j].strip()
-                        if closing in ("});", "},"):
-                            changed = True
-                            i = j + 1
-                            continue
-
-            # ── Multi-line empty block ──
-            if stripped.endswith("{"):
-                j = i + 1
-                while j < len(lines) and lines[j].strip() == "":
-                    j += 1
-                if j < len(lines) and lines[j].strip() in ("}", "});"):
-                    if re.match(r"\s*else\s*\{", stripped):
-                        changed = True
-                        i = j + 1
-                        continue
-                    if re.match(r"\s*\}\s*else\s*\{", stripped):
-                        indent = line[: len(line) - len(line.lstrip())]
-                        new_lines.append(f"{indent}}}\n")
-                        changed = True
-                        i = j + 1
-                        continue
-                    if re.match(r"\s*(?:if|else\s+if)\s*\(", stripped):
-                        changed = True
-                        i = j + 1
-                        continue
-
-            # ── Single-line empty block ──
-            if _EMPTY_BLOCK_RE.match(stripped):
-                changed = True
-                i += 1
-                continue
-
-            new_lines.append(line)
-            i += 1
-
         lines = new_lines
 
     # Final pass: collapse double blank lines

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from desloppify.languages._framework.runtime import LangRun
 
 from desloppify import state as state_mod
 from desloppify import utils as utils_mod
@@ -20,8 +25,8 @@ from desloppify.app.commands.scan.scan_helpers import (
 )
 from desloppify.engine.planning import core as plan_mod
 from desloppify.engine.planning.scan import PlanScanOptions
-from desloppify.engine.work_queue_internal import issues as issues_mod
-from desloppify.languages.framework.runtime import LangRunOverrides, make_lang_run
+from desloppify.engine._work_queue import issues as issues_mod
+from desloppify.languages._framework.runtime import LangRunOverrides, make_lang_run
 from desloppify.utils import colorize
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
@@ -42,12 +47,12 @@ def _subjective_reset_dimensions(*, lang_name: str | None = None) -> tuple[str, 
 class ScanRuntime:
     """Resolved runtime context for a single scan invocation."""
 
-    args: object
+    args: argparse.Namespace
     state_path: Path | None
     state: dict
     path: Path
     config: dict
-    lang: object | None
+    lang: LangRun | None
     lang_label: str
     profile: str
     effective_include_slow: bool
@@ -79,11 +84,11 @@ class ScanNoiseSnapshot:
 
 
 def _configure_lang_runtime(
-    args,
+    args: argparse.Namespace,
     config: dict,
     state: dict,
-    lang,
-) -> object | None:
+    lang: LangRun | None,
+) -> LangRun | None:
     """Populate runtime context and threshold overrides for a selected language."""
     if not lang:
         return None
@@ -335,7 +340,13 @@ def _augment_with_stale_wontfix_findings(
 
 def run_scan_generation(runtime: ScanRuntime) -> tuple[list[dict], dict, dict | None]:
     """Run detector pipeline and return findings, potentials, and codebase metrics."""
+    from desloppify.languages._framework.treesitter import (
+        disable_parse_cache,
+        enable_parse_cache,
+    )
+
     utils_mod.enable_file_cache()
+    enable_parse_cache()
     try:
         findings, potentials = plan_mod.generate_findings(
             runtime.path,
@@ -347,6 +358,7 @@ def run_scan_generation(runtime: ScanRuntime) -> tuple[list[dict], dict, dict | 
             ),
         )
     finally:
+        disable_parse_cache()
         utils_mod.disable_file_cache()
 
     codebase_metrics = _collect_codebase_metrics(runtime.lang, runtime.path)
@@ -377,18 +389,10 @@ def merge_scan_results(
     prev_scan_path = runtime.state.get("scan_path")
     path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
 
-    prev_overall = (
-        state_mod.get_overall_score(runtime.state) if not path_changed else None
-    )
-    prev_objective = (
-        state_mod.get_objective_score(runtime.state) if not path_changed else None
-    )
-    prev_strict = (
-        state_mod.get_strict_score(runtime.state) if not path_changed else None
-    )
-    prev_verified = (
-        state_mod.get_verified_strict_score(runtime.state) if not path_changed else None
-    )
+    if not path_changed:
+        prev = state_mod.score_snapshot(runtime.state)
+    else:
+        prev = state_mod.ScoreSnapshot(None, None, None, None)
     prev_dim_scores = (
         runtime.state.get("dimension_scores", {}) if not path_changed else {}
     )
@@ -425,10 +429,10 @@ def merge_scan_results(
 
     return ScanMergeResult(
         diff=diff,
-        prev_overall=prev_overall,
-        prev_objective=prev_objective,
-        prev_strict=prev_strict,
-        prev_verified=prev_verified,
+        prev_overall=prev.overall,
+        prev_objective=prev.objective,
+        prev_strict=prev.strict,
+        prev_verified=prev.verified,
         prev_dim_scores=prev_dim_scores,
     )
 
@@ -478,7 +482,6 @@ __all__ = [
     "ScanMergeResult",
     "ScanNoiseSnapshot",
     "ScanRuntime",
-    "_reset_subjective_assessments_for_scan_reset",
     "merge_scan_results",
     "persist_reminder_history",
     "prepare_scan_runtime",

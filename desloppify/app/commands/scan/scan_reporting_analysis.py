@@ -141,7 +141,7 @@ def _show_subjective_score_nudge(state: dict) -> None:
     print()
 
 
-def _show_post_scan_analysis(
+def show_post_scan_analysis(
     diff: dict,
     state: dict,
     lang,
@@ -246,7 +246,7 @@ def _show_post_scan_analysis(
             print(
                 colorize(
                     f"  Subjective integrity: {holistic_open} holistic stale/missing signal(s) — "
-                    "`desloppify review --prepare --holistic --refresh`",
+                    "`desloppify review --prepare`",
                     "yellow",
                 )
             )
@@ -284,7 +284,7 @@ def _show_post_scan_analysis(
     return warnings, narrative
 
 
-def _show_score_integrity(state: dict, diff: dict):
+def show_score_integrity(state: dict, diff: dict):
     """Show Score Integrity section — surfaces wontfix debt and ignored findings."""
     stats = state.get("stats", {})
     wontfix = stats.get("wontfix", 0)
@@ -380,4 +380,4 @@ def _show_score_integrity(state: dict, diff: dict):
     print()
 
 
-__all__ = ["_show_post_scan_analysis", "_show_score_integrity"]
+__all__ = ["show_post_scan_analysis", "show_score_integrity"]

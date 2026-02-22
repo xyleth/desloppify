@@ -1,5 +1,5 @@
 """Type aliases for holistic review context package."""
 
-from desloppify.intelligence.review.context_internal.models import HolisticContext
+from desloppify.intelligence.review._context.models import HolisticContext
 
 __all__ = ["HolisticContext"]

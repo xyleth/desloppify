@@ -1,4 +1,4 @@
-"""Tests for desloppify.languages.framework.commands_base — command factory functions.
+"""Tests for desloppify.languages._framework.commands_base — command factory functions.
 
 Each factory returns a callable that runs a detector and prints results.
 We test that the factories return callables and that they invoke the correct
@@ -9,7 +9,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from desloppify.languages.framework.commands_base import (
+from desloppify.languages._framework.commands_base import (
     make_cmd_complexity,
     make_cmd_facade,
     make_cmd_large,
@@ -34,7 +34,7 @@ class TestMakeCmdLarge:
         cmd = make_cmd_large(file_finder=lambda p: [], default_threshold=500)
         assert callable(cmd)
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_calls_detect_large_files(self, mock_display):
         """Returned command invokes detect_large_files and display_entries."""
         finder = MagicMock(return_value=[])
@@ -47,7 +47,7 @@ class TestMakeCmdLarge:
             mock_detect.assert_called_once()
             mock_display.assert_called_once()
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_uses_default_threshold(self, mock_display):
         """Command uses the factory-provided default threshold."""
         cmd = make_cmd_large(file_finder=lambda p: [], default_threshold=300)
@@ -70,7 +70,7 @@ class TestMakeCmdComplexity:
         cmd = make_cmd_complexity(file_finder=lambda p: [], signals=[])
         assert callable(cmd)
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_calls_detect_complexity(self, mock_display):
         """Returned command invokes detect_complexity and display_entries."""
         cmd = make_cmd_complexity(file_finder=lambda p: [], signals=[])
@@ -92,7 +92,7 @@ class TestMakeCmdSingleUse:
         cmd = make_cmd_single_use(build_dep_graph=lambda p: {}, barrel_names=set())
         assert callable(cmd)
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_calls_detect_single_use(self, mock_display):
         """Returned command invokes detect_single_use_abstractions."""
         mock_graph = MagicMock(return_value={})
@@ -122,7 +122,7 @@ class TestMakeCmdPassthrough:
         )
         assert callable(cmd)
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_calls_detect_fn(self, mock_display):
         """Returned command invokes the provided detect function."""
         mock_detect = MagicMock(return_value=[])
@@ -146,7 +146,7 @@ class TestMakeCmdNaming:
         cmd = make_cmd_naming(file_finder=lambda p: [], skip_names=set())
         assert callable(cmd)
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_calls_detect_naming(self, mock_display):
         """Returned command invokes detect_naming_inconsistencies."""
         cmd = make_cmd_naming(
@@ -161,7 +161,7 @@ class TestMakeCmdNaming:
             cmd(_make_args())
             mock_detect.assert_called_once()
 
-    @patch("desloppify.languages.framework.commands_base.display_entries")
+    @patch("desloppify.languages._framework.commands_base.display_entries")
     def test_passes_skip_dirs(self, mock_display):
         """skip_dirs parameter is forwarded to the detector."""
         cmd = make_cmd_naming(

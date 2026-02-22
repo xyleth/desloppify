@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.intelligence import narrative as narrative_mod
-from desloppify.languages.framework.base.types import FixResult
+from desloppify.languages._framework.base.types import FixResult
 from desloppify.utils import colorize, rel
 
 from .io import _load_state, _save_state
 from .options import _COMMAND_POST_FIX
 
+if TYPE_CHECKING:
+    from desloppify.languages._framework.base.types import FixerConfig
+    from desloppify.languages._framework.runtime import LangRun
 
-def _detect(fixer, path: Path) -> list[dict]:
+
+def _detect(fixer: FixerConfig, path: Path) -> list[dict]:
     print(colorize(f"\nDetecting {fixer.label}...", "dim"), file=sys.stderr)
     entries = fixer.detect(path)
     file_count = len(set(e["file"] for e in entries))
@@ -29,7 +35,15 @@ def _detect(fixer, path: Path) -> list[dict]:
         file=sys.stderr,
     )
     return entries
-def _print_fix_summary(fixer, results, total_items, total_lines, dry_run):
+
+
+def _print_fix_summary(
+    fixer: FixerConfig,
+    results: list[dict],
+    total_items: int,
+    total_lines: int,
+    dry_run: bool,
+) -> None:
     verb = fixer.dry_verb if dry_run else fixer.verb
     lines_str = f" ({total_lines} lines)" if total_lines else ""
     print(
@@ -47,49 +61,43 @@ def _print_fix_summary(fixer, results, total_items, total_lines, dry_run):
     if len(results) > 30:
         print(f"  ... and {len(results) - 30} more files")
 
-def _apply_and_report(
-    args,
-    path,
-    fixer,
-    fixer_name,
-    entries,
-    results,
-    total_items,
-    lang,
-    skip_reasons=None,
-):
-    sp, state = _load_state(args)
-    prev_overall = state_mod.get_overall_score(state)
-    prev_objective = state_mod.get_objective_score(state)
-    prev_strict = state_mod.get_strict_score(state)
-    resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
-    _save_state(state, sp)
 
-    new_overall = state_mod.get_overall_score(state)
-    new_objective = state_mod.get_objective_score(state)
-    new_strict = state_mod.get_strict_score(state)
+def _apply_and_report(
+    args: argparse.Namespace,
+    path: Path,
+    fixer: FixerConfig,
+    fixer_name: str,
+    entries: list[dict],
+    results: list[dict],
+    total_items: int,
+    lang: LangRun | None,
+    skip_reasons: dict[str, int] | None = None,
+) -> None:
+    state_file, state = _load_state(args)
+    prev = state_mod.score_snapshot(state)
+    resolved_ids = _resolve_fixer_results(state, results, fixer.detector, fixer_name)
+    _save_state(state, state_file)
+
+    new = state_mod.score_snapshot(state)
     print(f"\n  Auto-resolved {len(resolved_ids)} findings in state")
-    if new_overall is not None and new_objective is not None and new_strict is not None:
-        overall_delta = new_overall - (prev_overall or 0)
+    if new.overall is not None and new.objective is not None and new.strict is not None:
+        overall_delta = new.overall - (prev.overall or 0)
         delta_str = (
             f" ({'+' if overall_delta > 0 else ''}{overall_delta:.1f})"
             if overall_delta
             else ""
         )
         print(
-            f"  Scores: overall {new_overall:.1f}/100{delta_str}"
-            + colorize(f"  objective {new_objective:.1f}/100", "dim")
-            + colorize(f"  strict {new_strict:.1f}/100", "dim")
+            f"  Scores: overall {new.overall:.1f}/100{delta_str}"
+            + colorize(f"  objective {new.objective:.1f}/100", "dim")
+            + colorize(f"  strict {new.strict:.1f}/100", "dim")
         )
     else:
         print(colorize("  Scores unavailable — run `desloppify scan`.", "yellow"))
 
     if fixer.post_fix:
-        try:
-            fixer.post_fix(path, state, prev_overall or 0, False, lang=lang)
-        except TypeError:
-            fixer.post_fix(path, state, prev_overall or 0, False)
-        _save_state(state, sp)
+        fixer.post_fix(path, state, prev.overall or 0, False, lang=lang)
+        _save_state(state, state_file)
 
     if skip_reasons is None:
         skip_reasons = {}
@@ -113,12 +121,12 @@ def _apply_and_report(
             "files_fixed": len(results),
             "items_fixed": total_items,
             "findings_resolved": len(resolved_ids),
-            "overall_score": new_overall,
-            "objective_score": new_objective,
-            "strict_score": new_strict,
-            "prev_overall_score": prev_overall,
-            "prev_objective_score": prev_objective,
-            "prev_strict_score": prev_strict,
+            "overall_score": new.overall,
+            "objective_score": new.objective,
+            "strict_score": new.strict,
+            "prev_overall_score": prev.overall,
+            "prev_objective_score": prev.objective,
+            "prev_strict_score": prev.strict,
             "skip_reasons": skip_reasons,
             "next_action": next_action,
             "narrative": narrative,
@@ -127,7 +135,15 @@ def _apply_and_report(
     _print_fix_retro(
         fixer_name, len(entries), total_items, len(resolved_ids), skip_reasons
     )
-def _report_dry_run(args, fixer_name, entries, results, total_items):
+
+
+def _report_dry_run(
+    args: argparse.Namespace,
+    fixer_name: str,
+    entries: list[dict],
+    results: list[dict],
+    total_items: int,
+) -> None:
     runtime = command_runtime(args)
     fix_lang = resolve_lang(args)
     fix_lang_name = fix_lang.name if fix_lang else None
@@ -162,7 +178,10 @@ def _report_dry_run(args, fixer_name, entries, results, total_items):
         ]:
             print(colorize(f"  - {q}", "dim"))
 
-def _resolve_fixer_results(state, results, detector, fixer_name):
+
+def _resolve_fixer_results(
+    state: dict, results: list[dict], detector: str, fixer_name: str
+) -> list[str]:
     resolved_ids = []
     for r in results:
         rfile = rel(r["file"])
@@ -176,7 +195,8 @@ def _resolve_fixer_results(state, results, detector, fixer_name):
                 resolved_ids.append(fid)
     return resolved_ids
 
-def _warn_uncommitted_changes():
+
+def _warn_uncommitted_changes() -> None:
     try:
         r = subprocess.run(
             ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=5
@@ -199,8 +219,9 @@ def _warn_uncommitted_changes():
                     "dim",
                 )
             )
-    except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         return
+
 
 def _cascade_unused_import_cleanup(
     path: Path,
@@ -208,8 +229,8 @@ def _cascade_unused_import_cleanup(
     _prev_score: float,
     dry_run: bool,
     *,
-    lang=None,
-):
+    lang: LangRun | None = None,
+) -> None:
     if not lang or "unused-imports" not in getattr(lang, "fixers", {}):
         print(colorize("  Cascade: no unused-imports fixer for this language", "dim"))
         return
@@ -257,6 +278,7 @@ _SKIP_REASON_LABELS = {
     "out_of_range": "line out of range (stale data?)",
     "other": "other patterns (needs manual review)",
 }
+
 
 def _print_fix_retro(
     fixer_name: str,

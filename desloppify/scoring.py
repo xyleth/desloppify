@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from desloppify.engine.scoring_internal.detection import (
+from desloppify.engine._scoring.detection import (
     detector_pass_rate,
     merge_potentials,
 )
-from desloppify.engine.scoring_internal.policy.core import (
+from desloppify.engine._scoring.policy.core import (
     CONFIDENCE_WEIGHTS,
     DIMENSIONS,
     FILE_BASED_DETECTORS,
@@ -24,7 +24,7 @@ from desloppify.engine.scoring_internal.policy.core import (
     Dimension,
     ScoreMode,
 )
-from desloppify.engine.scoring_internal.results.core import (
+from desloppify.engine._scoring.results.core import (
     ScoreBundle,
     compute_dimension_scores,
     compute_dimension_scores_by_mode,
@@ -34,7 +34,7 @@ from desloppify.engine.scoring_internal.results.core import (
     compute_score_impact,
     get_dimension_for_detector,
 )
-from desloppify.engine.scoring_internal.subjective.core import DISPLAY_NAMES
+from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
 
 __all__ = [
     "CONFIDENCE_WEIGHTS",

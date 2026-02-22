@@ -127,11 +127,11 @@ def _move_template() -> str:
     return (
         '"""Move helpers for language plugin scaffolding."""\n\n'
         "from __future__ import annotations\n\n"
-        "from .._shared.scaffold_defaults import (\n"
+        "from .._framework.commands_base import (\n"
         "    scaffold_find_replacements,\n"
         "    scaffold_verify_hint,\n"
         ")\n"
-        "from .._shared.scaffold_defaults import (\n"
+        "from .._framework.commands_base import (\n"
         "    scaffold_find_self_replacements,\n"
         ")\n"
         "\n"
@@ -254,7 +254,6 @@ def build_scaffold_files(
         "test_coverage.py": _test_coverage_template(),
         "detectors/__init__.py": "",
         "detectors/deps.py": _deps_template(),
-        "review_data/per_file_dimensions.override.json": _empty_review_override(),
         "review_data/holistic_dimensions.override.json": _empty_review_override(),
         "fixers/__init__.py": "",
         "tests/__init__.py": "",

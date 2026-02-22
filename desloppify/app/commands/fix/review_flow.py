@@ -9,7 +9,8 @@ from desloppify import state as state_mod
 from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.runtime import command_runtime
-from desloppify.app.commands.review import single as review_single_mod
+from desloppify.app.commands.review import runtime as review_runtime_mod
+from desloppify.core.fallbacks import print_error
 from desloppify.intelligence import review as review_mod
 from desloppify.intelligence.integrity import review as subjective_integrity_mod
 from desloppify.utils import colorize
@@ -22,13 +23,13 @@ def _cmd_fix_review(args):
     runtime = command_runtime(args)
     lang_cfg = resolve_lang(args)
     if not lang_cfg:
-        print(colorize("Error: could not detect language. Use --lang.", "red"))
+        print_error("could not detect language. Use --lang.")
         sys.exit(1)
 
     _sp, state = _load_state(args)
     path = Path(args.path)
 
-    lang_run, found_files = review_single_mod._setup_lang(
+    lang_run, found_files = review_runtime_mod.setup_lang_concrete(
         lang_cfg,
         path,
         runtime.config,
@@ -72,12 +73,12 @@ def _cmd_fix_review(args):
                 )
             print(
                 colorize(
-                    "    Run: `desloppify review --prepare --holistic --refresh`", "dim"
+                    "    Run: `desloppify review --prepare`", "dim"
                 )
             )
             print(
                 colorize(
-                    "    Then import and rescan: `desloppify review --import findings.json --holistic && desloppify scan`",
+                    "    Then import and rescan: `desloppify review --import findings.json && desloppify scan`",
                     "dim",
                 )
             )
@@ -130,7 +131,7 @@ def _cmd_fix_review(args):
     print(colorize("  4. Import: desloppify review --import findings.json", "dim"))
     print(
         colorize(
-            "  5. Optional objective cross-check: desloppify review --prepare --holistic --refresh",
+            "  5. Optional objective cross-check: desloppify review --prepare",
             "dim",
         )
     )

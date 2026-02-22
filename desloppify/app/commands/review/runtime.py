@@ -4,19 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from desloppify.engine.policy.zones import FileZoneMap
+    from desloppify.languages._framework.base.types import LangConfig
+    from desloppify.languages._framework.runtime import LangRun
 
 
 def setup_lang(
-    lang: Any,
+    lang: LangConfig,
     path: Path,
     config: dict[str, Any],
     *,
-    make_lang_run_fn: Callable[[Any], Any],
-    file_zone_map_cls,
+    make_lang_run_fn: Callable[[LangConfig], LangRun],
+    file_zone_map_cls: type[FileZoneMap],
     rel_fn: Callable[[str], str],
     log_fn: Callable[[str], None],
-) -> tuple[Any, list[str]]:
+) -> tuple[LangRun, list[str]]:
     """Build LangRun with zone map + dep graph and return (run, files)."""
     lang_run = make_lang_run_fn(lang)
     files: list[str] = []
@@ -43,4 +48,21 @@ def setup_lang(
     return lang_run, files
 
 
-__all__ = ["setup_lang"]
+def setup_lang_concrete(lang: LangConfig, path: Path, config: dict) -> tuple[LangRun, list[str]]:
+    """Build LangRun with zone map + dep graph using concrete dependencies."""
+    from desloppify.engine.policy.zones import FileZoneMap
+    from desloppify.languages import runtime as lang_runtime_mod
+    from desloppify.utils import log, rel
+
+    return setup_lang(
+        lang,
+        path,
+        config,
+        make_lang_run_fn=lang_runtime_mod.make_lang_run,
+        file_zone_map_cls=FileZoneMap,
+        rel_fn=rel,
+        log_fn=log,
+    )
+
+
+__all__ = ["setup_lang", "setup_lang_concrete"]

@@ -3,7 +3,10 @@
 import textwrap
 from pathlib import Path
 
-from desloppify.languages.python.detectors.deps import build_dep_graph
+from desloppify.languages.python.detectors.deps import (
+    build_dep_graph,
+    find_python_dynamic_imports,
+)
 
 # ── Helpers ────────────────────────────────────────────────
 
@@ -219,6 +222,101 @@ class TestEdgeCases:
 
 
 # ── Dots-only relative imports ────────────────────────────
+
+
+# ── Dynamic import finder ─────────────────────────────────
+
+
+class TestDynamicImportFinder:
+    def test_finds_importlib_import_module(self, tmp_path):
+        """importlib.import_module('foo.bar') should be found."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "loader.py": textwrap.dedent("""\
+                    import importlib
+                    mod = importlib.import_module("mypkg.plugins.auth")
+                """),
+                "plugins/__init__.py": "",
+                "plugins/auth.py": "x = 1\n",
+            },
+        )
+        targets = find_python_dynamic_imports(pkg, [".py"])
+        # Should contain the resolved path or the raw specifier
+        assert len(targets) >= 1
+        # The raw specifier should match if resolution fails,
+        # or a resolved path ending in auth.py if it succeeds
+        found = any(
+            "auth" in t for t in targets
+        )
+        assert found, f"Expected 'auth' in targets, got {targets}"
+
+    def test_ignores_non_string_args(self, tmp_path):
+        """importlib.import_module(variable) should NOT be found."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "loader.py": textwrap.dedent("""\
+                    import importlib
+                    name = "foo"
+                    mod = importlib.import_module(name)
+                """),
+            },
+        )
+        targets = find_python_dynamic_imports(pkg, [".py"])
+        assert len(targets) == 0
+
+    def test_ignores_unrelated_import_module_calls(self, tmp_path):
+        """other_lib.import_module() should NOT be found."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "loader.py": textwrap.dedent("""\
+                    import custom_loader
+                    mod = custom_loader.import_module("foo")
+                """),
+            },
+        )
+        targets = find_python_dynamic_imports(pkg, [".py"])
+        assert len(targets) == 0
+
+    def test_syntax_error_skipped(self, tmp_path):
+        """Files with syntax errors should be skipped gracefully."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "broken.py": "def foo( :\n",
+                "good.py": textwrap.dedent("""\
+                    import importlib
+                    mod = importlib.import_module("some.module")
+                """),
+            },
+        )
+        targets = find_python_dynamic_imports(pkg, [".py"])
+        assert len(targets) >= 1
+
+    def test_multiple_calls_collected(self, tmp_path):
+        """Multiple importlib.import_module() calls in different files."""
+        pkg = _make_pkg(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "a.py": textwrap.dedent("""\
+                    import importlib
+                    importlib.import_module("pkg.alpha")
+                """),
+                "b.py": textwrap.dedent("""\
+                    import importlib
+                    importlib.import_module("pkg.beta")
+                """),
+            },
+        )
+        targets = find_python_dynamic_imports(pkg, [".py"])
+        assert len(targets) >= 2
 
 
 class TestDotsOnlyImport:

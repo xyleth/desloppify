@@ -5,6 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from desloppify.app.commands.helpers.query import write_query
+from desloppify.app.commands.review import runtime as review_runtime_mod
+from desloppify.intelligence import narrative as narrative_mod
+from desloppify.intelligence import review as review_mod
+from desloppify.utils import colorize
+
 
 def _redacted_review_config(config: dict | None) -> dict:
     """Return review packet config with target score removed for blind assessment."""
@@ -20,23 +26,13 @@ def do_prepare(
     _state_path,
     *,
     config: dict,
-    holistic: bool,
-    setup_lang_fn,
-    narrative_mod,
-    review_mod,
-    write_query_fn,
-    colorize_fn,
-    log_fn,
 ) -> None:
     """Prepare mode: holistic-only review packet in query.json."""
-    if not holistic:
-        log_fn("  Per-file review mode is deprecated; preparing holistic packet.")
-
     path = Path(args.path)
     dims_str = getattr(args, "dimensions", None)
     dimensions = dims_str.split(",") if dims_str else None
 
-    lang_run, found_files = setup_lang_fn(lang, path, config)
+    lang_run, found_files = review_runtime_mod.setup_lang_concrete(lang, path, config)
 
     lang_name = lang_run.name
     narrative = narrative_mod.compute_narrative(
@@ -58,7 +54,7 @@ def do_prepare(
     total = data.get("total_files", 0)
     if total == 0:
         print(
-            colorize_fn(
+            colorize(
                 f"\n  Error: no files found at path '{path}'. "
                 "Nothing to review.",
                 "red",
@@ -68,7 +64,7 @@ def do_prepare(
         scan_path = state.get("scan_path") if isinstance(state, dict) else None
         if scan_path:
             print(
-                colorize_fn(
+                colorize(
                     f"  Hint: your last scan used --path {scan_path}. "
                     f"Try: desloppify review --prepare --path {scan_path}",
                     "yellow",
@@ -77,49 +73,49 @@ def do_prepare(
             )
         else:
             print(
-                colorize_fn(
+                colorize(
                     "  Hint: pass --path <dir> matching the path used during scan.",
                     "yellow",
                 ),
                 file=sys.stderr,
             )
         sys.exit(1)
-    write_query_fn(data)
+    write_query(data)
     batches = data.get("investigation_batches", [])
-    print(colorize_fn(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
+    print(colorize(f"\n  Holistic review prepared: {total} files in codebase", "bold"))
     if batches:
         print(
-            colorize_fn(
+            colorize(
                 "\n  Investigation batches (independent — can run in parallel):", "bold"
             )
         )
         for i, batch in enumerate(batches, 1):
             n_files = len(batch["files_to_read"])
             print(
-                colorize_fn(
+                colorize(
                     f"    {i}. {batch['name']} ({n_files} files) — {batch['why']}",
                     "dim",
                 )
             )
-    print(colorize_fn("\n  Workflow:", "bold"))
+    print(colorize("\n  Workflow:", "bold"))
     for step_i, step in enumerate(data.get("workflow", []), 1):
-        print(colorize_fn(f"    {step_i}. {step}", "dim"))
-    print(colorize_fn("\n  AGENT PLAN:", "yellow"))
+        print(colorize(f"    {step_i}. {step}", "dim"))
+    print(colorize("\n  AGENT PLAN:", "yellow"))
     print(
-        colorize_fn(
+        colorize(
             "  1. Run each investigation batch independently (parallel-friendly)", "dim"
         )
     )
-    print(colorize_fn("  2. Capture findings in findings.json", "dim"))
-    print(colorize_fn("  3. Import and rescan", "dim"))
+    print(colorize("  2. Capture findings in findings.json", "dim"))
+    print(colorize("  3. Import and rescan", "dim"))
     print(
-        colorize_fn(
+        colorize(
             "  Next command to improve subjective scores: `desloppify review --import findings.json`",
             "dim",
         )
     )
     print(
-        colorize_fn(
+        colorize(
             "\n  → query.json updated. "
             "Review codebase, then: desloppify review --import findings.json",
             "cyan",

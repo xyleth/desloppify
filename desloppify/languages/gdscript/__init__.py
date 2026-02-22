@@ -5,12 +5,15 @@ from __future__ import annotations
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base.phase_builders import (
+from desloppify.languages._framework.treesitter.phases import all_treesitter_phases
+from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
+    detector_phase_signature,
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
-from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
+from desloppify.core._internal.text_utils import get_area
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages.gdscript import test_coverage as gdscript_test_coverage_hooks
 from desloppify.languages.gdscript.commands import get_detect_commands
 from desloppify.languages.gdscript.detectors.deps import (
@@ -31,13 +34,6 @@ from desloppify.languages.gdscript.review import (
     api_surface,
     module_patterns,
 )
-
-
-def _get_gdscript_area(filepath: str) -> str:
-    parts = [part for part in filepath.replace("\\", "/").split("/") if part]
-    if len(parts) > 1:
-        return "/".join(parts[:2])
-    return parts[0] if parts else filepath
 
 
 GDSCRIPT_ENTRY_PATTERNS = [
@@ -74,12 +70,14 @@ class GdscriptConfig(LangConfig):
             phases=[
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
+                *all_treesitter_phases("gdscript"),
+                detector_phase_signature(),
                 detector_phase_test_coverage(),
                 detector_phase_security(),
                 *shared_subjective_duplicates_tail(),
             ],
             fixers={},
-            get_area=_get_gdscript_area,
+            get_area=get_area,
             detect_commands=get_detect_commands(),
             boundaries=[],
             typecheck_cmd="godot --headless --check-only",

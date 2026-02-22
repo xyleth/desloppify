@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-import re
+from functools import partial
 from pathlib import Path
 
+from desloppify.core._internal.text_utils import get_area
+from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base.phase_builders import (
+from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
-from desloppify.languages.framework.base.shared_phases import phase_private_imports
-from desloppify.languages.framework.base.types import DetectorPhase, LangConfig
+from desloppify.languages._framework.base.shared_phases import phase_private_imports
+from desloppify.languages._framework.base.types import DetectorPhase, LangConfig
 from desloppify.languages.python import test_coverage as py_test_coverage_hooks
 from desloppify.languages.python.commands import get_detect_commands
 from desloppify.languages.python.detectors.deps import build_dep_graph
@@ -85,19 +87,10 @@ PY_ZONE_RULES = [
 register_lang_hooks("python", test_coverage=py_test_coverage_hooks)
 
 
-def _get_py_area(filepath: str) -> str:
-    """Derive an area name from a Python file path for grouping."""
-    parts = [part for part in re.split(r"[\\/]+", filepath) if part]
-    if len(parts) > 2:
-        return "/".join(parts[:2])
-    return parts[0] if parts else filepath
+_get_py_area = partial(get_area, min_depth=3)
 
 
-def _py_build_dep_graph(path: Path) -> dict:
-    return build_dep_graph(path)
-
-
-def _py_extract_functions(path: Path) -> list:
+def _py_extract_functions(path: Path) -> list[FunctionInfo]:
     """Extract all Python functions for duplicate detection."""
     functions = []
     for filepath in find_py_files(path):
@@ -136,7 +129,7 @@ class PythonConfig(LangConfig):
             extensions=[".py"],
             exclusions=["__pycache__", ".venv", "node_modules", ".eggs", "*.egg-info"],
             default_src=".",
-            build_dep_graph=_py_build_dep_graph,
+            build_dep_graph=build_dep_graph,
             entry_patterns=PY_ENTRY_PATTERNS,
             barrel_names={"__init__.py"},
             phases=[

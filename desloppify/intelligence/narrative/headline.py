@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-
-def _history_strict(entry: dict) -> float | None:
-    """Strict score from history entry."""
-    return entry.get("strict_score")
+from ._constants import _history_strict
 
 
 def _compute_headline(
@@ -76,7 +73,7 @@ def _compute_headline_inner(
         return f"First scan complete. {open_count} findings detected."
 
     # Regression — acknowledge that drops after fixes are normal
-    if phase == "regression" and len(history) >= 2:
+    if phase == "regression":
         prev = _history_strict(history[-2])
         curr = _history_strict(history[-1])
         if prev is not None and curr is not None:

@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from desloppify.engine.detectors.base import FunctionInfo
 from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 from desloppify.hook_registry import register_lang_hooks
 from desloppify.languages import register_lang
-from desloppify.languages.framework.base.phase_builders import (
+from desloppify.languages._framework.treesitter.phases import make_cohesion_phase
+from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
+    detector_phase_signature,
     detector_phase_test_coverage,
     shared_subjective_duplicates_tail,
 )
-from desloppify.languages.framework.base.types import (
+from desloppify.languages._framework.base.types import (
     BoundaryRule,
     DetectorPhase,
     FixerConfig,
@@ -23,7 +26,6 @@ from desloppify.languages.typescript import commands as ts_commands_mod
 from desloppify.languages.typescript import fixers as ts_fixers_mod
 from desloppify.languages.typescript import test_coverage as ts_test_coverage_hooks
 from desloppify.languages.typescript.detectors import deps as deps_detector_mod
-from desloppify.languages.typescript.detectors import exports as exports_detector_mod
 from desloppify.languages.typescript.detectors import logs as logs_detector_mod
 from desloppify.languages.typescript.detectors import smells as smells_detector_mod
 from desloppify.languages.typescript.detectors import unused as unused_detector_mod
@@ -62,6 +64,29 @@ from desloppify.languages.typescript.review import (
     module_patterns as ts_review_module_patterns,
 )
 from desloppify.utils import find_ts_files, get_area
+
+def _ts_treesitter_phases() -> list[DetectorPhase]:
+    """Cherry-pick tree-sitter phases that complement TS's own detectors.
+
+    TS already has its own smells and unused detection — only add cohesion
+    which TS lacks.  (Signature analysis is added separately since it's
+    backend-agnostic and doesn't require tree-sitter.)
+    """
+    from desloppify.languages._framework.treesitter import is_available
+
+    if not is_available():
+        return []
+
+    from desloppify.languages._framework.treesitter._specs import TREESITTER_SPECS
+
+    spec = TREESITTER_SPECS.get("typescript")
+    if spec is None:
+        return []
+
+    return [
+        make_cohesion_phase(spec),
+    ]
+
 
 _TS_TEST_COVERAGE_HOOKS = (
     ts_test_coverage_hooks.has_testable_logic,
@@ -115,9 +140,6 @@ def _get_ts_fixers() -> dict[str, FixerConfig]:
     def _det_logs(path):
         return logs_detector_mod.detect_logs(path)[0]
 
-    def _det_exports(path):
-        return exports_detector_mod.detect_dead_exports(path)[0]
-
     def _det_smell(smell_id):
         def f(path):
             return next(
@@ -160,14 +182,6 @@ def _get_ts_fixers() -> dict[str, FixerConfig]:
         "debug-logs": FixerConfig(
             "tagged debug logs", _det_logs, _fix_logs, "logs", R, DV
         ),
-        "dead-exports": FixerConfig(
-            "dead exports",
-            _det_exports,
-            _lazy_fix("fix_dead_exports"),
-            "exports",
-            "De-exported",
-            "Would de-export",
-        ),
         "unused-vars": FixerConfig(
             "unused vars", _det_unused("vars"), _fix_vars, "unused", R, DV
         ),
@@ -201,11 +215,8 @@ def _get_ts_fixers() -> dict[str, FixerConfig]:
 # ── Build the config ──────────────────────────────────────
 
 
-def _ts_build_dep_graph(path: Path) -> dict:
-    return deps_detector_mod.build_dep_graph(path)
 
-
-def _ts_extract_functions(path: Path) -> list:
+def _ts_extract_functions(path: Path) -> list[FunctionInfo]:
     """Extract all TS functions for duplicate detection."""
     functions = []
     for filepath in find_ts_files(path):
@@ -226,7 +237,7 @@ class TypeScriptConfig(LangConfig):
             extensions=[".ts", ".tsx"],
             exclusions=["node_modules", ".d.ts"],
             default_src="src",
-            build_dep_graph=_ts_build_dep_graph,
+            build_dep_graph=deps_detector_mod.build_dep_graph,
             entry_patterns=[
                 "/pages/",
                 "/main.tsx",
@@ -252,6 +263,8 @@ class TypeScriptConfig(LangConfig):
                 DetectorPhase(
                     "Coupling + single-use + patterns + naming", _phase_coupling
                 ),
+                *_ts_treesitter_phases(),
+                detector_phase_signature(),
                 detector_phase_test_coverage(),
                 DetectorPhase("Code smells", _phase_smells),
                 detector_phase_security(),

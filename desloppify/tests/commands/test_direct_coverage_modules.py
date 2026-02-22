@@ -19,11 +19,8 @@ import desloppify.app.commands.review.prepare as review_prepare
 import desloppify.app.commands.review.runner_helpers as review_runner_helpers
 import desloppify.app.commands.review.runtime as review_runtime
 import desloppify.app.commands.scan.scan_artifacts as scan_artifacts
-import desloppify.app.commands.scan.scan_reporting_breakdown as scan_reporting_breakdown
-import desloppify.app.commands.scan.scan_reporting_progress as scan_reporting_progress
-import desloppify.app.commands.scan.scan_reporting_subjective_common as scan_reporting_subjective_common
-import desloppify.app.commands.scan.scan_reporting_subjective_integrity as scan_reporting_subjective_integrity
-import desloppify.app.commands.scan.scan_reporting_subjective_output as scan_reporting_subjective_output
+import desloppify.app.commands.scan.scan_reporting_presentation as scan_reporting_presentation
+import desloppify.app.commands.scan.scan_reporting_subjective as scan_reporting_subjective
 import desloppify.app.commands.scan.scan_workflow as scan_workflow
 import desloppify.app.commands.status_parts.render as status_render
 import desloppify.app.commands.status_parts.summary as status_summary
@@ -36,11 +33,11 @@ import desloppify.core.runtime_state as runtime_state
 import desloppify.engine.planning.common as plan_common
 import desloppify.engine.planning.scan as plan_scan
 import desloppify.engine.planning.select as plan_select
-import desloppify.engine.state_internal.noise as noise
-import desloppify.engine.state_internal.persistence as persistence
-import desloppify.engine.state_internal.resolution as state_resolution
+import desloppify.engine._state.noise as noise
+import desloppify.engine._state.persistence as persistence
+import desloppify.engine._state.resolution as state_resolution
 import desloppify.intelligence.integrity.review as subjective_review_integrity
-import desloppify.intelligence.review.context_internal.structure as review_context_structure
+import desloppify.intelligence.review._context.structure as review_context_structure
 import desloppify.intelligence.review.dimensions.holistic as review_dimensions_holistic
 import desloppify.intelligence.review.dimensions.validation as review_dimensions_validation
 import desloppify.languages as lang_pkg
@@ -51,7 +48,7 @@ import desloppify.languages.dart.extractors as dart_extractors
 import desloppify.languages.dart.move as dart_move
 import desloppify.languages.dart.phases as dart_phases
 import desloppify.languages.dart.review as dart_review
-import desloppify.languages.framework.discovery as lang_discovery
+import desloppify.languages._framework.discovery as lang_discovery
 import desloppify.languages.gdscript.commands as gdscript_commands
 import desloppify.languages.gdscript.extractors as gdscript_extractors
 import desloppify.languages.gdscript.move as gdscript_move
@@ -116,11 +113,11 @@ def test_direct_module_coverage_smoke_signals():
     assert callable(review_runtime.setup_lang)
     assert callable(status_render.show_tier_progress_table)
     assert callable(status_summary.score_summary_lines)
-    assert callable(scan_reporting_breakdown.show_score_model_breakdown)
-    assert callable(scan_reporting_progress.show_detector_progress)
-    assert callable(scan_reporting_subjective_common.subjective_rerun_command)
-    assert callable(scan_reporting_subjective_integrity.subjective_integrity_followup)
-    assert callable(scan_reporting_subjective_output.build_subjective_followup)
+    assert callable(scan_reporting_presentation.show_score_model_breakdown)
+    assert callable(scan_reporting_presentation.show_detector_progress)
+    assert callable(scan_reporting_subjective.subjective_rerun_command)
+    assert callable(scan_reporting_subjective.subjective_integrity_followup)
+    assert callable(scan_reporting_subjective.build_subjective_followup)
     assert isinstance(cmd_registry.COMMAND_HANDLERS, dict)
     assert "scan" in cmd_registry.COMMAND_HANDLERS
     runtime = runtime_state.current_runtime_context()

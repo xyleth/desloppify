@@ -17,7 +17,7 @@ from pathlib import Path
 from desloppify.core.fallbacks import log_best_effort_failure
 from desloppify.languages.typescript.detectors.contracts import DetectorResult
 from desloppify.utils import (
-    c,
+    colorize,
     find_ts_files,
     grep_files,
     print_table,
@@ -72,7 +72,7 @@ def cmd_logs(args: argparse.Namespace) -> None:
         return
 
     if not entries:
-        print(c("No tagged console.logs found.", "green"))
+        print(colorize("No tagged console.logs found.", "green"))
         return
 
     by_file: dict[str, list] = defaultdict(list)
@@ -85,25 +85,25 @@ def cmd_logs(args: argparse.Namespace) -> None:
         by_tag[e["tag"]] += 1
 
     print(
-        c(
+        colorize(
             f"\nTagged console.logs: {len(entries)} across {len(by_file)} files\n",
             "bold",
         )
     )
 
-    print(c("Top tags:", "cyan"))
+    print(colorize("Top tags:", "cyan"))
     for tag, count in sorted(by_tag.items(), key=lambda x: -x[1])[:10]:
         print(f"  [{tag}] × {count}")
     print()
 
-    print(c("Top files:", "cyan"))
+    print(colorize("Top files:", "cyan"))
     rows = []
     for filepath, file_entries in sorted_files[: args.top]:
         rows.append([rel(filepath), str(len(file_entries))])
     print_table(["File", "Count"], rows, [70, 6])
 
     if args.fix:
-        print(c(f"\n--fix: Will remove {len(entries)} tagged log lines.", "yellow"))
+        print(colorize(f"\n--fix: Will remove {len(entries)} tagged log lines.", "yellow"))
         confirm = input("Proceed? [y/N] ").strip().lower()
         if confirm == "y":
             _fix_logs(by_file)
@@ -130,7 +130,7 @@ def _fix_logs(by_file: dict[str, list]):
             os.replace(str(tmp), str(p))
         except OSError as e:
             failed += 1
-            print(c(f"  Failed to fix {filepath}: {e}", "red"))
+            print(colorize(f"  Failed to fix {filepath}: {e}", "red"))
             try:
                 tmp.unlink(missing_ok=True)
             except OSError as cleanup_exc:
@@ -140,4 +140,4 @@ def _fix_logs(by_file: dict[str, list]):
     msg = f"Removed {removed} lines across {len(by_file)} files."
     if failed:
         msg += f" ({failed} files failed.)"
-    print(c(msg, "green"))
+    print(colorize(msg, "green"))

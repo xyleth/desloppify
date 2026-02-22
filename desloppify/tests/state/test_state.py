@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from desloppify.engine.state_internal import filtering as state_query_mod
-from desloppify.engine.state_internal.merge import MergeScanOptions, upsert_findings
-from desloppify.engine.state_internal.schema import (
+from desloppify.engine._state import filtering as state_query_mod
+from desloppify.engine._state.merge import MergeScanOptions, upsert_findings
+from desloppify.engine._state.schema import (
     empty_state,
     ensure_state_defaults,
     validate_state_invariants,
@@ -670,7 +670,7 @@ class TestWontfixAutoResolution:
     def test_empty_potentials_dict_not_treated_as_none(self):
         """Empty potentials {} means 'scan ran but no detectors reported' —
         should not mark detectors suspect just because dict is falsy."""
-        from desloppify.engine.state_internal.merge import find_suspect_detectors
+        from desloppify.engine._state.merge import find_suspect_detectors
 
         # Build a state with 3 open findings for a detector
         existing = {}
@@ -687,7 +687,7 @@ class TestWontfixAutoResolution:
 
     def test_potentials_none_means_no_info(self):
         """potentials=None means no ran_detectors info at all."""
-        from desloppify.engine.state_internal.merge import find_suspect_detectors
+        from desloppify.engine._state.merge import find_suspect_detectors
 
         existing = {}
         for i in range(3):
@@ -730,7 +730,7 @@ class TestWontfixAutoResolution:
         assert st["dimension_scores"] == {}
 
     def test_zero_active_checks_with_assessments_keeps_subjective_scoring(self):
-        """With no review findings, subjective dimensions stay clean."""
+        """Assessment scores drive subjective dimensions directly."""
         st = empty_state()
         st["subjective_assessments"] = {"naming_quality": {"score": 40}}
         merge_scan(
@@ -739,10 +739,11 @@ class TestWontfixAutoResolution:
             MergeScanOptions(lang="typescript", potentials={"logs": 0, "unused": 0, "subjective_review": 0}, force_resolve=True),
         )
 
-        # Objective excludes subjective dimensions; overall/strict still score clean.
+        # Objective excludes subjective dimensions.
         assert st["objective_score"] == 100.0
-        assert st["overall_score"] == 100.0
-        assert st["strict_score"] == 100.0
+        # Overall/strict are dragged down by the low assessment score.
+        assert st["overall_score"] < 100.0
+        assert st["strict_score"] < 100.0
 
 
 class TestSuppressionAccounting:

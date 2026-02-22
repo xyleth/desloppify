@@ -24,7 +24,7 @@ from desloppify.languages.typescript.detectors.deps_runtime import (
 )
 from desloppify.utils import (
     PROJECT_ROOT,
-    c,
+    colorize,
     find_source_files,
     find_ts_files,
     grep_files,
@@ -287,16 +287,16 @@ def cmd_deps(args: Any) -> None:
         if args.json:
             print(json.dumps({"file": rel(args.file), **coupling}, indent=2))
             return
-        print(c(f"\nDependency info: {rel(args.file)}\n", "bold"))
+        print(colorize(f"\nDependency info: {rel(args.file)}\n", "bold"))
         print(f"  Fan-in (importers):  {coupling['fan_in']}")
         print(f"  Fan-out (imports):   {coupling['fan_out']}")
         print(f"  Instability:         {coupling['instability']}")
         if coupling["importers"]:
-            print(c(f"\n  Imported by ({coupling['fan_in']}):", "cyan"))
+            print(colorize(f"\n  Imported by ({coupling['fan_in']}):", "cyan"))
             for p in coupling["importers"][:20]:
                 print(f"    {p}")
         if coupling["imports"]:
-            print(c(f"\n  Imports ({coupling['fan_out']}):", "cyan"))
+            print(colorize(f"\n  Imports ({coupling['fan_out']}):", "cyan"))
             for p in coupling["imports"][:20]:
                 print(f"    {p}")
         return
@@ -330,7 +330,7 @@ def cmd_deps(args: Any) -> None:
         )
         return
 
-    print(c(f"\nMost coupled files: {len(scored)} with >5 connections\n", "bold"))
+    print(colorize(f"\nMost coupled files: {len(scored)} with >5 connections\n", "bold"))
     rows = []
     for s in scored[: args.top]:
         rows.append(
@@ -360,14 +360,14 @@ def cmd_cycles(args: Any) -> None:
         return
 
     if not cycles:
-        print(c("\nNo import cycles found.", "green"))
+        print(colorize("\nNo import cycles found.", "green"))
         return
 
-    print(c(f"\nImport cycles: {len(cycles)}\n", "bold"))
+    print(colorize(f"\nImport cycles: {len(cycles)}\n", "bold"))
     for i, cy in enumerate(cycles[: args.top]):
         files = [rel(f) for f in cy["files"]]
         print(
-            c(
+            colorize(
                 f"  Cycle {i + 1} ({cy['length']} files):",
                 "red" if cy["length"] > 3 else "yellow",
             )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.languages._shared.scaffold_defaults import (
+from desloppify.languages._framework.commands_base import (
     scaffold_find_replacements,
     scaffold_find_self_replacements,
     scaffold_verify_hint,

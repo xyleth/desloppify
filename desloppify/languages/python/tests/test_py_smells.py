@@ -34,111 +34,6 @@ def _find_smell(entries: list[dict], smell_id: str) -> dict | None:
 # ── Regex-based smell tests ───────────────────────────────
 
 
-class TestBareExcept:
-    def test_detected(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            try:
-                pass
-            except:
-                pass
-        """,
-        )
-        entries, count = detect_smells(path)
-        assert "bare_except" in _smell_ids(entries)
-        assert count == 1
-
-    def test_not_detected_for_specific_except(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            try:
-                pass
-            except ValueError:
-                raise
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "bare_except" not in _smell_ids(entries)
-
-
-class TestBroadExcept:
-    def test_except_exception(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            try:
-                pass
-            except Exception as e:
-                raise RuntimeError() from e
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "broad_except" in _smell_ids(entries)
-
-    def test_except_specific_not_flagged(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            try:
-                pass
-            except KeyError:
-                pass
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "broad_except" not in _smell_ids(entries)
-
-    def test_except_base_exception(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            try:
-                pass
-            except BaseException:
-                raise
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "broad_except" in _smell_ids(entries)
-
-
-class TestMutableDefault:
-    def test_list_default(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            def foo(items=[]):
-                return items
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "mutable_default" in _smell_ids(entries)
-
-    def test_dict_default(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            def bar(opts={}):
-                return opts
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "mutable_default" in _smell_ids(entries)
-
-    def test_immutable_default_ok(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            def baz(x=None, y=42, z="hello"):
-                return x, y, z
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "mutable_default" not in _smell_ids(entries)
-
-
 class TestEvalExec:
     def test_eval_detected(self, tmp_path):
         path = _write_py(
@@ -170,55 +65,6 @@ class TestEvalExec:
         )
         entries, _ = detect_smells(path)
         assert "eval_exec" not in _smell_ids(entries)
-
-
-class TestStarImport:
-    def test_star_import_detected(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            from os.path import *
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "star_import" in _smell_ids(entries)
-
-    def test_normal_import_ok(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            from os.path import join, exists
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "star_import" not in _smell_ids(entries)
-
-
-class TestGlobalKeyword:
-    def test_global_inside_function(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            x = 10
-            def foo():
-                global x
-                x = 20
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "global_keyword" in _smell_ids(entries)
-
-
-class TestTypeIgnore:
-    def test_type_ignore(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            x: int = "hello"  # type: ignore
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "type_ignore" in _smell_ids(entries)
 
 
 class TestTodoFixme:
@@ -473,33 +319,6 @@ class TestSubprocessNoTimeout:
         )
         entries, _ = detect_smells(path)
         assert "subprocess_no_timeout" not in _smell_ids(entries)
-
-
-class TestMutableClassVar:
-    def test_list_class_var(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            class Foo:
-                items = []
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "mutable_class_var" in _smell_ids(entries)
-
-    def test_dataclass_ok(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            from dataclasses import dataclass, field
-
-            @dataclass
-            class Bar:
-                items: list = field(default_factory=list)
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "mutable_class_var" not in _smell_ids(entries)
 
 
 class TestUnreachableCode:
@@ -798,66 +617,6 @@ class TestOutputStructure:
 
 
 # ── #48: lost_exception_context ───────────────────────────
-
-
-class TestLostExceptionContext:
-    def test_raise_without_from(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            def risky():
-                try:
-                    open("f")
-                except FileNotFoundError as e:
-                    raise ValueError("bad")
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "lost_exception_context" in _smell_ids(entries)
-
-    def test_raise_with_from_ok(self, tmp_path):
-        path = _write_py(
-            tmp_path,
-            """\
-            def risky():
-                try:
-                    open("f")
-                except FileNotFoundError as e:
-                    raise ValueError("bad") from e
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "lost_exception_context" not in _smell_ids(entries)
-
-    def test_bare_raise_ok(self, tmp_path):
-        """Bare raise (re-raise) preserves the chain implicitly."""
-        path = _write_py(
-            tmp_path,
-            """\
-            def risky():
-                try:
-                    open("f")
-                except FileNotFoundError:
-                    raise
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "lost_exception_context" not in _smell_ids(entries)
-
-    def test_raise_from_none_ok(self, tmp_path):
-        """raise X from None is intentional chain suppression — not flagged."""
-        path = _write_py(
-            tmp_path,
-            """\
-            def risky():
-                try:
-                    open("f")
-                except FileNotFoundError:
-                    raise ValueError("bad") from None
-        """,
-        )
-        entries, _ = detect_smells(path)
-        assert "lost_exception_context" not in _smell_ids(entries)
 
 
 # ── #49: vestigial_parameter ──────────────────────────────

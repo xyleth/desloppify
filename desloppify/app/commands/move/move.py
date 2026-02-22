@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from desloppify.app.commands.move.move_reporting import print_file_move_plan
 from desloppify.utils import colorize, rel, resolve_path
 
 
-def cmd_move(args) -> None:
+def cmd_move(args: argparse.Namespace) -> None:
     """Move a file or directory and update all import references."""
     source_rel = args.source
     source_abs = resolve_path(source_rel)

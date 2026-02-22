@@ -77,17 +77,18 @@ def _is_sys_path_mutation(node: ast.Call) -> bool:
 def _detect_import_time_boundary_mutations(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
+    smell_id: str,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag import-time runtime mutations in non-entrypoint modules."""
     del all_nodes  # Traversal is top-level execution order, not full-node walk.
 
+    results: list[dict] = []
     for call in _iter_import_time_calls(tree):
         if _is_sys_path_mutation(call):
-            if "import_path_mutation" in smell_counts:
-                smell_counts["import_path_mutation"].append(
+            if smell_id == "import_path_mutation":
+                results.append(
                     {
                         "file": filepath,
                         "line": call.lineno,
@@ -98,8 +99,8 @@ def _detect_import_time_boundary_mutations(
 
         call_name = _call_name(call)
         if call_name == "load_dotenv":
-            if "import_env_mutation" in smell_counts:
-                smell_counts["import_env_mutation"].append(
+            if smell_id == "import_env_mutation":
+                results.append(
                     {
                         "file": filepath,
                         "line": call.lineno,
@@ -109,30 +110,31 @@ def _detect_import_time_boundary_mutations(
             continue
 
         if call_name in {"setup_logging", "basicConfig", "dictConfig", "fileConfig"}:
-            if "import_runtime_init" in smell_counts:
-                smell_counts["import_runtime_init"].append(
+            if smell_id == "import_runtime_init":
+                results.append(
                     {
                         "file": filepath,
                         "line": call.lineno,
                         "content": f"{call_name}() at import time",
                     }
                 )
+    return results
 
 
 def _detect_sys_exit_in_library(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag sys.exit()/exit()/quit() outside CLI entry points."""
     basename = Path(filepath).name
     if basename in _CLI_FILENAMES:
-        return
+        return []
     if any(pattern in filepath for pattern in _CLI_DIR_PATTERNS):
-        return
+        return []
 
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, ast.Call):
         func = node.func
         if (
@@ -141,7 +143,7 @@ def _detect_sys_exit_in_library(
             and isinstance(func.value, ast.Name)
             and func.value.id == "sys"
         ):
-            smell_counts["sys_exit_in_library"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": node.lineno,
@@ -149,23 +151,24 @@ def _detect_sys_exit_in_library(
                 }
             )
         elif isinstance(func, ast.Name) and func.id in ("exit", "quit"):
-            smell_counts["sys_exit_in_library"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": node.lineno,
                     "content": f"{func.id}() in library code — raise an exception instead",
                 }
             )
+    return results
 
 
 def _detect_silent_except(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag except handlers that only pass/continue and swallow errors silently."""
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, ast.ExceptHandler):
         body = node.body
         if not body:
@@ -190,13 +193,14 @@ def _detect_silent_except(
             clause = "except ...:"
 
         body_text = "pass" if isinstance(body[0], ast.Pass) else "continue"
-        smell_counts["silent_except"].append(
+        results.append(
             {
                 "file": filepath,
                 "line": node.lineno,
                 "content": f"{clause} {body_text} — error silently suppressed",
             }
         )
+    return results
 
 
 __all__ = [

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desloppify.intelligence.review.context_internal.models import HolisticContext
+from desloppify.intelligence.review._context.models import HolisticContext
 
 _EXTENSIONLESS_FILENAMES = {
     "makefile",
@@ -469,4 +469,24 @@ def filter_batches_to_dimensions(
     return filtered
 
 
-__all__ = ["build_investigation_batches", "filter_batches_to_dimensions"]
+def batch_concerns(concerns: list) -> dict | None:
+    """Build investigation batch from mechanical concern signals.
+
+    *concerns* should be a list of Concern dataclass instances from
+    ``desloppify.engine.concerns``.
+    """
+    if not concerns:
+        return None
+    types = sorted({c.type for c in concerns if c.type})
+    why_parts = ["mechanical detectors identified structural patterns needing judgment"]
+    if types:
+        why_parts.append(f"concern types: {', '.join(types)}")
+    return {
+        "name": "Design Coherence — Mechanical Concern Signals",
+        "dimensions": ["design_coherence"],
+        "files_to_read": sorted({c.file for c in concerns if c.file}),
+        "why": "; ".join(why_parts),
+    }
+
+
+__all__ = ["batch_concerns", "build_investigation_batches", "filter_batches_to_dimensions"]

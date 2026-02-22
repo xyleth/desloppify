@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from desloppify.engine.detectors.graph import detect_cycles, get_coupling_score
-from desloppify.utils import c, print_table, rel
+from desloppify.utils import colorize, print_table, rel
 
 
 def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
@@ -18,7 +18,7 @@ def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
         if getattr(args, "json", False):
             print(json.dumps({"file": rel(args.file), **coupling}, indent=2))
             return
-        print(c(f"\nDependency info: {rel(args.file)}\n", "bold"))
+        print(colorize(f"\nDependency info: {rel(args.file)}\n", "bold"))
         print(f"  Fan-in (importers):  {coupling['fan_in']}")
         print(f"  Fan-out (imports):   {coupling['fan_out']}")
         print(f"  Instability:         {coupling['instability']}")
@@ -45,7 +45,7 @@ def cmd_deps(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
         )
         return
 
-    print(c(f"\nC# dependency graph: {len(graph)} files\n", "bold"))
+    print(colorize(f"\nC# dependency graph: {len(graph)} files\n", "bold"))
     rows = []
     for filepath, entry in by_importers[: getattr(args, "top", 20)]:
         rows.append([rel(filepath), str(entry.get("importer_count", 0)), str(entry.get("import_count", 0))])
@@ -74,10 +74,10 @@ def cmd_cycles(args, *, build_dep_graph, resolve_roslyn_cmd) -> None:
         return
 
     if not cycles:
-        print(c("No import cycles found.", "green"))
+        print(colorize("No import cycles found.", "green"))
         return
 
-    print(c(f"\nImport cycles: {len(cycles)}\n", "bold"))
+    print(colorize(f"\nImport cycles: {len(cycles)}\n", "bold"))
     for cycle in cycles[: getattr(args, "top", 20)]:
         files = [rel(filepath) for filepath in cycle["files"]]
         suffix = f" -> +{len(files) - 6}" if len(files) > 6 else ""

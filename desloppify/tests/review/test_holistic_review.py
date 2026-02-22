@@ -6,12 +6,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from desloppify import utils as _u
 from desloppify.engine.detectors.review_coverage import detect_holistic_review_staleness
-from desloppify.engine.state_internal.filtering import path_scoped_findings
-from desloppify.engine.state_internal.schema import empty_state
+from desloppify.engine._state.filtering import path_scoped_findings
+from desloppify.engine._state.schema import empty_state
 from desloppify.intelligence.narrative.core import _count_open_by_detector
 from desloppify.intelligence.review import (
     HOLISTIC_DIMENSION_PROMPTS,
@@ -28,7 +26,7 @@ from desloppify.intelligence.review import (
     prepare_holistic_review as _prepare_holistic_review_impl,
 )
 from desloppify.intelligence.review.context import file_excerpt
-from desloppify.intelligence.review.context_internal.patterns import (
+from desloppify.intelligence.review._context.patterns import (
     extract_imported_names,
 )
 from desloppify.intelligence.review.prepare import HolisticReviewPrepareOptions
@@ -36,11 +34,10 @@ from desloppify.intelligence.review.prepare_batches import (
     build_investigation_batches as _build_investigation_batches,
 )
 from desloppify.intelligence.review.prepare_batches import filter_batches_to_dimensions
-from desloppify.intelligence.review.prepare_internal.helpers import (
+from desloppify.intelligence.review._prepare.helpers import (
     HOLISTIC_WORKFLOW as _HOLISTIC_WORKFLOW,
 )
 from desloppify.scoring import (
-    HOLISTIC_MULTIPLIER,
     HOLISTIC_POTENTIAL,
     detector_pass_rate,
 )
@@ -105,7 +102,7 @@ def import_holistic_findings(findings_data, state, lang_name):
 
 class TestHolisticConstants:
     def test_fifteen_dimensions(self):
-        assert len(HOLISTIC_DIMENSIONS) == 19
+        assert len(HOLISTIC_DIMENSIONS) == 20
 
     def test_all_dimensions_have_prompts(self):
         for dim in HOLISTIC_DIMENSIONS:
@@ -151,7 +148,7 @@ class TestHolisticDimensionsByLang:
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 19
+        assert len(data["dimensions"]) == 20
 
     def test_python_gets_eleven_dims(self, tmp_path):
         f1 = _make_file(str(tmp_path), "module.py", lines=50)
@@ -160,12 +157,13 @@ class TestHolisticDimensionsByLang:
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 11
+        assert len(data["dimensions"]) == 12
         assert "package_organization" in data["dimensions"]
         assert "api_surface_coherence" not in data["dimensions"]
         assert "high_level_elegance" in data["dimensions"]
         assert "mid_level_elegance" in data["dimensions"]
         assert "low_level_elegance" in data["dimensions"]
+        assert "design_coherence" in data["dimensions"]
 
     def test_typescript_gets_twelve_dims(self, tmp_path):
         f1 = _make_file(str(tmp_path), "module.ts", lines=50)
@@ -175,7 +173,7 @@ class TestHolisticDimensionsByLang:
 
         data = prepare_holistic_review(tmp_path, lang, state, files=[f1])
 
-        assert len(data["dimensions"]) == 12
+        assert len(data["dimensions"]) == 13
         assert "api_surface_coherence" in data["dimensions"]
         assert "package_organization" in data["dimensions"]
         assert "high_level_elegance" in data["dimensions"]
@@ -308,8 +306,8 @@ class TestPrepareHolisticReview:
 
         assert data["mode"] == "holistic"
         assert data["command"] == "review"
-        # Python lang gets curated 11-dim subset
-        assert len(data["dimensions"]) == 11
+        # Python lang gets curated 12-dim subset
+        assert len(data["dimensions"]) == 12
         assert "holistic_context" in data
         assert "system_prompt" in data
 
@@ -396,6 +394,7 @@ class TestImportHolisticFindings:
                 "summary": "utils.py imported everywhere",
                 "confidence": "high",
                 "related_files": ["utils.py", "a.py"],
+                "suggestion": "Split utils.py by domain",
             },
             {
                 "dimension": "error_consistency",
@@ -403,6 +402,7 @@ class TestImportHolisticFindings:
                 "summary": "Three error strategies across modules",
                 "confidence": "medium",
                 "related_files": ["handler.py", "service.py"],
+                "suggestion": "Consolidate to Result type",
             },
         ]
 
@@ -419,6 +419,7 @@ class TestImportHolisticFindings:
                 "identifier": "god_module",
                 "summary": "test finding",
                 "confidence": "high",
+                "suggestion": "split it",
             }
         ]
 
@@ -458,6 +459,7 @@ class TestImportHolisticFindings:
                 "identifier": "unused_deps",
                 "summary": "3 unused deps",
                 "confidence": "medium",
+                "suggestion": "Remove unused dependencies",
             }
         ]
 
@@ -474,6 +476,7 @@ class TestImportHolisticFindings:
                 "identifier": "god_module",
                 "summary": "test",
                 "confidence": "high",
+                "suggestion": "split it",
             }
         ]
 
@@ -482,6 +485,61 @@ class TestImportHolisticFindings:
         fid = list(state["findings"].keys())[0]
         assert "holistic" in fid
 
+    def test_positive_observation_skipped(self):
+        """Positive observations (compliments) are rejected during import."""
+        state = empty_state()
+        findings_data = [
+            {
+                "dimension": "cross_module_architecture",
+                "identifier": "good_decomposition",
+                "summary": "Good decomposition of domain modules",
+                "confidence": "high",
+                "suggestion": "Keep it up",
+            },
+            {
+                "dimension": "error_consistency",
+                "identifier": "well_structured",
+                "summary": "Well structured error handling throughout",
+                "confidence": "high",
+                "suggestion": "Continue this pattern",
+            },
+            {
+                "dimension": "naming_quality",
+                "identifier": "vague_name",
+                "summary": "processData is vague — rename to reconcileInvoice",
+                "confidence": "high",
+                "suggestion": "Rename processData to reconcileInvoice",
+            },
+        ]
+
+        diff = import_holistic_findings(findings_data, state, "python")
+
+        # Only the actual defect should be imported
+        assert diff["new"] == 1
+        assert diff.get("skipped", 0) == 2
+        findings = list(state["findings"].values())
+        assert len(findings) == 1
+        assert "vague_name" in findings[0]["id"]
+
+    def test_missing_suggestion_rejected(self):
+        """Findings without suggestion field are rejected."""
+        state = empty_state()
+        findings_data = [
+            {
+                "dimension": "cross_module_architecture",
+                "identifier": "god_module",
+                "summary": "utils.py imported everywhere",
+                "confidence": "high",
+                # Missing: suggestion
+            },
+        ]
+
+        diff = import_holistic_findings(findings_data, state, "python")
+
+        assert diff["new"] == 0
+        assert diff.get("skipped", 0) == 1
+        assert "suggestion" in diff["skipped_details"][0]["missing"]
+
 
 # ===================================================================
 # Scoring: holistic multiplier
@@ -489,6 +547,13 @@ class TestImportHolisticFindings:
 
 
 class TestHolisticScoring:
+    """Review findings are excluded from detection-side scoring.
+
+    The review detector is scored via subjective assessments only.
+    ``detector_pass_rate("review", ...)`` always returns a perfect score
+    regardless of the findings present.
+    """
+
     def _holistic_finding(self, confidence="high", status="open"):
         return {
             "detector": "review",
@@ -509,30 +574,29 @@ class TestHolisticScoring:
             "detail": {},
         }
 
-    def test_holistic_multiplier_applied(self):
+    def test_review_excluded_from_scoring(self):
+        """Review findings always return perfect pass rate."""
         findings = {"0": self._holistic_finding(confidence="high")}
         rate, issues, weighted = detector_pass_rate("review", findings, 60)
 
-        # high confidence = 1.0 * 10 = 10.0 weighted failures
-        assert issues == 1
-        assert weighted == pytest.approx(1.0 * HOLISTIC_MULTIPLIER)
-        assert rate == pytest.approx((60 - 10.0) / 60)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_holistic_no_per_file_cap(self):
-        """Multiple holistic findings are NOT capped like per-file findings."""
+    def test_multiple_review_findings_still_excluded(self):
+        """Multiple review findings still produce perfect score."""
         findings = {
             "0": self._holistic_finding(confidence="high"),
             "1": self._holistic_finding(confidence="medium"),
         }
         rate, issues, weighted = detector_pass_rate("review", findings, 60)
 
-        # high=1.0*10=10.0, medium=0.7*10=7.0, total=17.0
-        expected = 1.0 * HOLISTIC_MULTIPLIER + 0.7 * HOLISTIC_MULTIPLIER
-        assert issues == 2
-        assert weighted == pytest.approx(expected)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_mixed_holistic_and_file(self):
-        """Holistic and file findings score separately."""
+    def test_mixed_holistic_and_file_excluded(self):
+        """Both holistic and file-based review findings are excluded."""
         findings = {
             "0": self._holistic_finding(confidence="high"),
             "1": self._file_finding(confidence="high", file="src/a.py"),
@@ -540,13 +604,12 @@ class TestHolisticScoring:
         }
         rate, issues, weighted = detector_pass_rate("review", findings, 60)
 
-        # Holistic: 1.0*10=10.0
-        # File: two findings on same file → capped at 1.0
-        # Total: 11.0
-        assert issues == 3
-        assert weighted == pytest.approx(11.0)
+        assert rate == 1.0
+        assert issues == 0
+        assert weighted == 0.0
 
-    def test_holistic_resolved_not_counted(self):
+    def test_resolved_review_also_excluded(self):
+        """Even resolved review findings return perfect score."""
         findings = {"0": self._holistic_finding(confidence="high", status="fixed")}
         rate, issues, weighted = detector_pass_rate("review", findings, 60)
 
@@ -1454,7 +1517,7 @@ class TestGenerateRemediationPlan:
         plan = generate_remediation_plan(state, "python")
 
         assert "Re-evaluate" in plan
-        assert "review --prepare --holistic" in plan
+        assert "review --prepare" in plan
         assert "auto-resolve" in plan
 
     def test_how_to_use_section(self):
@@ -1576,18 +1639,21 @@ class TestNewHolisticDimensions:
                 "identifier": "auth_gap",
                 "summary": "Auth middleware missing on admin routes",
                 "confidence": "high",
+                "suggestion": "Add auth middleware to admin routes",
             },
             {
                 "dimension": "ai_generated_debt",
                 "identifier": "ai_comments",
                 "summary": "Restating comments across 12 files",
                 "confidence": "medium",
+                "suggestion": "Remove restating comments",
             },
             {
                 "dimension": "incomplete_migration",
                 "identifier": "mixed_api",
                 "summary": "Old axios + new fetch coexist in services/",
                 "confidence": "high",
+                "suggestion": "Consolidate to fetch",
             },
         ]
         diff = import_holistic_findings(data, state, "typescript")
@@ -1956,6 +2022,7 @@ class TestPackageOrganizationDimension:
                 "summary": "3 viz files at root should be in output/ subpackage",
                 "confidence": "high",
                 "related_files": ["visualize.py", "scorecard.py", "_scorecard_draw.py"],
+                "suggestion": "Move viz files into output/ subpackage",
             }
         ]
         diff = import_holistic_findings(data, state, "python")

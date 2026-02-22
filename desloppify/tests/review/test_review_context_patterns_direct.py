@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import desloppify.intelligence.review.context_internal.patterns as patterns_mod
+import desloppify.intelligence.review._context.patterns as patterns_mod
 
 
 def test_extract_imported_names_handles_from_and_import_forms():

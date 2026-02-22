@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import re
 
-from desloppify.languages._shared.scaffold_defaults import (
-    SCAFFOLD_HOLISTIC_REVIEW_DIMENSIONS as HOLISTIC_REVIEW_DIMENSIONS,
-)
+HOLISTIC_REVIEW_DIMENSIONS: list[str] = [
+    "cross_module_architecture",
+    "error_consistency",
+    "abstraction_fitness",
+    "test_strategy",
+    "design_coherence",
+]
 
 REVIEW_GUIDANCE = {
     "patterns": [

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import desloppify.app.output.scorecard_parts.dimensions as scorecard_dimensions
 import desloppify.app.output.scorecard_parts.theme as scorecard_theme
-import desloppify.engine.scoring_internal.detection as scoring_detection
-import desloppify.engine.scoring_internal.policy.core as scoring_policy
-import desloppify.engine.scoring_internal.results.core as scoring_results
-import desloppify.engine.scoring_internal.subjective.core as scoring_subjective
-import desloppify.engine.state_internal.merge_findings as merge_findings
-import desloppify.engine.state_internal.merge_history as merge_history
-import desloppify.engine.work_queue_internal.helpers as work_queue_helpers
-import desloppify.engine.work_queue_internal.ranking as work_queue_ranking
+import desloppify.engine._scoring.detection as scoring_detection
+import desloppify.engine._scoring.policy.core as scoring_policy
+import desloppify.engine._scoring.results.core as scoring_results
+import desloppify.engine._scoring.subjective.core as scoring_subjective
+import desloppify.engine._state.merge_findings as merge_findings
+import desloppify.engine._state.merge_history as merge_history
+import desloppify.engine._work_queue.helpers as work_queue_helpers
+import desloppify.engine._work_queue.ranking as work_queue_ranking
 import desloppify.intelligence.review.prepare_batches as review_prepare_batches
 
 

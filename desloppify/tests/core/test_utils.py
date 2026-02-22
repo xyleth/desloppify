@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-import desloppify.core.internal.text_utils as utils_text_mod
+import desloppify.core._internal.text_utils as utils_text_mod
 import desloppify.utils as utils_mod
 from desloppify.utils import (
     check_tool_staleness,

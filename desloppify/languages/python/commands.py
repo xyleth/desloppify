@@ -20,12 +20,12 @@ from desloppify.languages.python.extractors import (
     extract_py_functions,
 )
 from desloppify.languages.python.extractors_classes import extract_py_classes
-from desloppify.utils import c, display_entries, find_py_files, print_table, rel
+from desloppify.utils import colorize, display_entries, find_py_files, print_table, rel
 
 if TYPE_CHECKING:
     import argparse
 
-from desloppify.languages.framework.commands_base import (
+from desloppify.languages._framework.commands_base import (
     make_cmd_complexity,
     make_cmd_facade,
     make_cmd_large,
@@ -102,10 +102,10 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         )
         return
     if not entries:
-        print(c("\nNo orphaned files found.", "green"))
+        print(colorize("\nNo orphaned files found.", "green"))
         return
     total_loc = sum(e["loc"] for e in entries)
-    print(c(f"\nOrphaned files: {len(entries)} files, {total_loc} LOC\n", "bold"))
+    print(colorize(f"\nOrphaned files: {len(entries)} files, {total_loc} LOC\n", "bold"))
     top = getattr(args, "top", 20)
     rows = [[rel(e["file"]), str(e["loc"])] for e in entries[:top]]
     print_table(["File", "LOC"], rows, [80, 6])
@@ -117,9 +117,9 @@ def cmd_unused(args: argparse.Namespace) -> None:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
     if not entries:
-        print(c("No unused symbols found.", "green"))
+        print(colorize("No unused symbols found.", "green"))
         return
-    print(c(f"\nUnused symbols: {len(entries)}\n", "bold"))
+    print(colorize(f"\nUnused symbols: {len(entries)}\n", "bold"))
     for e in entries[: getattr(args, "top", 20)]:
         print(f"  {rel(e['file'])}:{e['line']}  {e['category']}: {e['name']}")
 
@@ -129,9 +129,9 @@ def cmd_deps(args: argparse.Namespace) -> None:
     if getattr(args, "json", False):
         print(json.dumps({"files": len(graph)}, indent=2))
         return
-    print(c(f"\nPython dependency graph: {len(graph)} files\n", "bold"))
+    print(colorize(f"\nPython dependency graph: {len(graph)} files\n", "bold"))
     by_importers = sorted(graph.items(), key=lambda x: -x[1]["importer_count"])
-    print(c("Most imported:", "bold"))
+    print(colorize("Most imported:", "bold"))
     for filepath, entry in by_importers[:15]:
         print(
             f"  {rel(filepath):60s}  {entry['importer_count']:3d} importers  {len(entry['imports']):3d} imports"
@@ -145,9 +145,9 @@ def cmd_cycles(args: argparse.Namespace) -> None:
         print(json.dumps({"count": len(cycles), "cycles": cycles}, indent=2))
         return
     if not cycles:
-        print(c("No import cycles found.", "green"))
+        print(colorize("No import cycles found.", "green"))
         return
-    print(c(f"\nImport cycles: {len(cycles)}\n", "bold"))
+    print(colorize(f"\nImport cycles: {len(cycles)}\n", "bold"))
     for cy in cycles[: getattr(args, "top", 20)]:
         files = [rel(f) for f in cy["files"]]
         print(
@@ -174,9 +174,9 @@ def cmd_dupes(args: argparse.Namespace) -> None:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
     if not entries:
-        print(c("No duplicate functions found.", "green"))
+        print(colorize("No duplicate functions found.", "green"))
         return
-    print(c(f"\nDuplicate functions: {len(entries)} pairs\n", "bold"))
+    print(colorize(f"\nDuplicate functions: {len(entries)} pairs\n", "bold"))
     rows = []
     for e in entries[: getattr(args, "top", 20)]:
         a, b = e["fn_a"], e["fn_b"]

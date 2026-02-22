@@ -8,7 +8,6 @@ import pytest
 import desloppify.languages.typescript.detectors.deps as deps_detector_mod
 import desloppify.utils as utils_mod
 from desloppify.engine.detectors import orphaned as orphaned_detector_mod
-from desloppify.languages.typescript.detectors.exports import _build_reference_index
 
 
 @pytest.fixture(autouse=True)
@@ -516,21 +515,6 @@ class TestFrameworkFiles:
         orphan_files = {e["file"] for e in orphans}
         svelte_key = str((tmp_path / "App.svelte").resolve())
         assert svelte_key not in orphan_files
-
-    def test_dead_export_not_flagged_when_svelte_uses_it(self, tmp_path):
-        """Export used in .svelte file is not flagged as dead."""
-
-        _write(tmp_path, "src/utils.ts", "export function doStuff() { return 1; }\n")
-        _write(
-            tmp_path,
-            "src/App.svelte",
-            ("<script>\nimport { doStuff } from './utils';\ndoStuff();\n</script>\n"),
-        )
-
-        # _build_reference_index searches SRC_PATH
-        refs = _build_reference_index(utils_mod.SRC_PATH, {"doStuff"})
-        assert "doStuff" in refs
-        assert len(refs["doStuff"]) >= 2  # found in both utils.ts and App.svelte
 
     def test_framework_with_tsconfig_alias(self, tmp_path):
         """.svelte importing via @/ alias resolves correctly in graph."""

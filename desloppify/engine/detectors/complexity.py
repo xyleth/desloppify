@@ -1,5 +1,6 @@
 """Complexity signal detection: configurable per-language complexity signals."""
 
+import inspect
 import logging
 import re
 from pathlib import Path
@@ -28,11 +29,8 @@ def detect_complexity(
     entries = []
     for filepath in files:
         try:
-            p = (
-                Path(filepath)
-                if Path(filepath).is_absolute()
-                else PROJECT_ROOT / filepath
-            )
+            fp = Path(filepath)
+            p = fp if fp.is_absolute() else PROJECT_ROOT / filepath
             content = p.read_text()
             lines = content.splitlines()
             loc = len(lines)
@@ -44,7 +42,14 @@ def detect_complexity(
 
             for sig in signals:
                 if sig.compute:
-                    result = sig.compute(content, lines)
+                    # Pass filepath to compute fns that accept it (tree-sitter signals).
+                    accepts_filepath = "_filepath" in inspect.signature(
+                        sig.compute
+                    ).parameters
+                    if accepts_filepath:
+                        result = sig.compute(content, lines, _filepath=filepath)
+                    else:
+                        result = sig.compute(content, lines)
                     if result:
                         count, label = result
                         file_signals.append(label)

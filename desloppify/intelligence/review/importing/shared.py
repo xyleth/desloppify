@@ -4,8 +4,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from desloppify.core._internal.text_utils import is_numeric
 from desloppify.intelligence.review.dimensions import normalize_dimension_name
 from desloppify.state import utc_now
+
+
+def _review_file_cache(state: dict[str, Any]) -> dict:
+    """Access ``state["review_cache"]["files"]``, creating if absent."""
+    return state.setdefault("review_cache", {}).setdefault("files", {})
+
+
+def _lang_potentials(state: dict[str, Any], lang_name: str) -> dict:
+    """Access ``state["potentials"][lang_name]``, creating if absent."""
+    return state.setdefault("potentials", {}).setdefault(lang_name, {})
 
 
 def store_assessments(
@@ -53,7 +64,7 @@ def store_assessments(
             for key, raw in component_scores.items():
                 if not isinstance(key, str) or not key.strip():
                     continue
-                if isinstance(raw, bool) or not isinstance(raw, int | float):
+                if not is_numeric(raw):
                     continue
                 cleaned_scores[key.strip()] = round(max(0.0, min(100.0, float(raw))), 1)
 

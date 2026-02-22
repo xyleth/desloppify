@@ -11,8 +11,13 @@ import tomllib
 
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.languages import available_langs, get_lang
-from desloppify.languages.framework.structure_validation import validate_lang_structure
+from desloppify.languages._framework.structure_validation import validate_lang_structure
 from desloppify.utils import PROJECT_ROOT, compute_tool_hash, rel
+
+
+def _full_langs() -> list[str]:
+    """Return only languages with full (non-generic) plugin structure."""
+    return [lang for lang in available_langs() if get_lang(lang).integration_depth == "full"]
 
 
 def _load_pyproject() -> dict:
@@ -27,7 +32,7 @@ def test_pyproject_discovers_lang_test_paths():
     data = _load_pyproject()
     testpaths = data["tool"]["pytest"]["ini_options"]["testpaths"]
     assert "desloppify/tests" in testpaths
-    for lang in available_langs():
+    for lang in _full_langs():
         assert _lang_test_rel_path(lang) in testpaths
 
 
@@ -45,7 +50,7 @@ def test_pyproject_excludes_tests_from_packages():
 
 
 def test_each_lang_has_colocated_tests_dir():
-    for lang in available_langs():
+    for lang in _full_langs():
         test_dir = PROJECT_ROOT / _lang_test_rel_path(lang)
         assert test_dir.is_dir(), f"missing tests dir for {lang}: {test_dir}"
         init_file = test_dir / "__init__.py"
@@ -53,7 +58,7 @@ def test_each_lang_has_colocated_tests_dir():
 
 
 def test_colocated_lang_tests_are_classified_as_test_zone():
-    for lang in available_langs():
+    for lang in _full_langs():
         cfg = get_lang(lang)
         test_dir = PROJECT_ROOT / _lang_test_rel_path(lang)
         files = sorted(str(p) for p in test_dir.glob("test_*.py"))
@@ -90,7 +95,7 @@ def test_packaging_includes_lang_plugin_tests():
 
     missing = [
         f"desloppify.languages.{lang}.tests"
-        for lang in available_langs()
+        for lang in _full_langs()
         if f"desloppify.languages.{lang}.tests" not in pkgs
     ]
     assert not missing, (
@@ -112,7 +117,7 @@ def test_validate_lang_structure_against_importlib_resolved_path():
     install that excluded tests/, that's site-packages/desloppify/languages/{lang}/
     which lacks tests/ and triggers the ValueError users saw.
     """
-    for lang in available_langs():
+    for lang in _full_langs():
         lang_pkg = f"desloppify.languages.{lang}"
         spec = importlib.util.find_spec(lang_pkg)
         assert spec is not None, f"Cannot find installed package {lang_pkg!r}"

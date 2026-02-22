@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TypedDict
 
 from desloppify.intelligence.narrative._constants import STRUCTURAL_MERGE
 from desloppify.intelligence.narrative.action_engine import compute_actions
@@ -94,27 +95,27 @@ def _count_open_by_detector(findings: dict) -> dict[str, int]:
     When detector is "review" and detail.holistic is True, also increments
     "review_holistic" for separate holistic counting.
     """
-    by_det: dict[str, int] = {}
+    by_detector: dict[str, int] = {}
     for f in findings.values():
         if f["status"] != "open":
             continue
-        det = f.get("detector", "unknown")
-        if det in STRUCTURAL_MERGE:
-            det = "structural"
-        by_det[det] = by_det.get(det, 0) + 1
+        detector = f.get("detector", "unknown")
+        if detector in STRUCTURAL_MERGE:
+            detector = "structural"
+        by_detector[detector] = by_detector.get(detector, 0) + 1
         # Track holistic review findings separately
-        if det == "review" and f.get("detail", {}).get("holistic"):
-            by_det["review_holistic"] = by_det.get("review_holistic", 0) + 1
+        if detector == "review" and f.get("detail", {}).get("holistic"):
+            by_detector["review_holistic"] = by_detector.get("review_holistic", 0) + 1
     # Track uninvestigated review findings (only when review findings exist)
-    if by_det.get("review", 0) > 0:
-        by_det["review_uninvestigated"] = sum(
+    if by_detector.get("review", 0) > 0:
+        by_detector["review_uninvestigated"] = sum(
             1
             for f in findings.values()
             if f.get("status") == "open"
             and f.get("detector") == "review"
             and not f.get("detail", {}).get("investigation")
         )
-    return by_det
+    return by_detector
 
 
 def _resolve_badge_path(project_root: Path) -> tuple[str, Path]:
@@ -124,7 +125,7 @@ def _resolve_badge_path(project_root: Path) -> tuple[str, Path]:
     try:
         config_mod = importlib.import_module("desloppify.core.config")
         config = config_mod.load_config()
-    except Exception:
+    except (ImportError, AttributeError, OSError):
         config = {}
 
     raw_path = default_rel
@@ -294,18 +295,31 @@ def _score_snapshot(state: dict) -> tuple[float | None, float | None]:
     return state_mod.get_strict_score(state), state_mod.get_overall_score(state)
 
 
+class NarrativeResult(TypedDict):
+    """Structured result from compute_narrative()."""
+
+    phase: str
+    headline: str | None
+    dimensions: dict[str, Any]
+    actions: list[dict[str, Any]]
+    strategy: dict[str, Any]
+    tools: dict[str, Any]
+    debt: dict[str, Any]
+    milestone: str | None
+    primary_action: dict[str, str] | None
+    why_now: str | None
+    verification_step: dict[str, str]
+    risk_flags: list[dict[str, Any]]
+    strict_target: dict[str, Any]
+    reminders: list[dict[str, Any]]
+    reminder_history: dict[str, int]
+
+
 def compute_narrative(
     state: dict,
     context: NarrativeContext | None = None,
-) -> dict[str, object]:
-    """Compute structured narrative context from state data.
-
-    Returns a dict with:
-    phase, headline, dimensions, actions, strategy, tools, debt, milestone,
-    primary_action, why_now, verification_step, risk_flags, reminders,
-    strict_target.
-
-    """
+) -> NarrativeResult:
+    """Compute structured narrative context from state data."""
     resolved_context = context or NarrativeContext()
 
     diff = resolved_context.diff
@@ -320,23 +334,23 @@ def compute_narrative(
     strict_score, overall_score = _score_snapshot(state)
     findings = _scoped_findings(state)
 
-    by_det = _count_open_by_detector(findings)
+    by_detector = _count_open_by_detector(findings)
     badge = _compute_badge_status()
 
     phase = _detect_phase(history, strict_score)
     dimensions = _analyze_dimensions(dim_scores, history, state)
     debt = _analyze_debt(dim_scores, findings, history)
-    milestone = _detect_milestone(state, diff, history)
+    milestone = _detect_milestone(state, None, history)
     action_context = ActionContext(
-        by_detector=by_det,
+        by_detector=by_detector,
         dimension_scores=dim_scores,
         state=state,
         debt=debt,
         lang=lang,
     )
     actions = [dict(action) for action in compute_actions(action_context)]
-    strategy = compute_strategy(findings, by_det, actions, phase, lang)
-    tools = dict(compute_tools(by_det, state, lang, badge))
+    strategy = compute_strategy(findings, by_detector, actions, phase, lang)
+    tools = dict(compute_tools(by_detector, state, lang, badge))
     primary_action = _compute_primary_action(actions)
     why_now = _compute_why_now(phase, strategy, primary_action)
     verification_step = _compute_verification_step(command)
@@ -352,7 +366,7 @@ def compute_narrative(
         overall_score,
         stats,
         history,
-        open_by_detector=by_det,
+        open_by_detector=by_detector,
     )
     reminders, updated_reminder_history = _compute_reminders(
         state, lang, phase, debt, actions, dimensions, badge, command, config=config

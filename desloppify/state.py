@@ -1,18 +1,20 @@
 """Public state API facade.
 
-State internals live in `desloppify.engine.state_internal`; this module exposes the
+State internals live in `desloppify.engine._state`; this module exposes the
 stable, non-private API used by commands, review flows, and language phases.
 """
 
-from desloppify.engine.state_internal.filtering import (
+from typing import NamedTuple
+
+from desloppify.engine._state.filtering import (
     add_ignore,
     is_ignored,
     make_finding,
     path_scoped_findings,
     remove_ignored_findings,
 )
-from desloppify.engine.state_internal.merge import MergeScanOptions, merge_scan
-from desloppify.engine.state_internal.noise import (
+from desloppify.engine._state.merge import MergeScanOptions, merge_scan
+from desloppify.engine._state.noise import (
     DEFAULT_FINDING_NOISE_BUDGET,
     DEFAULT_FINDING_NOISE_GLOBAL_BUDGET,
     apply_finding_noise_budget,
@@ -20,13 +22,19 @@ from desloppify.engine.state_internal.noise import (
     resolve_finding_noise_global_budget,
     resolve_finding_noise_settings,
 )
-from desloppify.engine.state_internal.persistence import load_state, save_state
-from desloppify.engine.state_internal.resolution import match_findings, resolve_findings
-from desloppify.engine.state_internal.schema import (
+from desloppify.engine._state.persistence import load_state, save_state
+from desloppify.engine._state.resolution import (
+    coerce_assessment_score,
+    match_findings,
+    resolve_findings,
+)
+
+from desloppify.engine._state.schema import (
     CURRENT_VERSION,
     STATE_DIR,
     STATE_FILE,
     Finding,
+    StateModel,
     get_objective_score,
     get_overall_score,
     get_strict_score,
@@ -34,7 +42,27 @@ from desloppify.engine.state_internal.schema import (
     json_default,
     utc_now,
 )
-from desloppify.engine.state_internal.scoring import suppression_metrics
+from desloppify.engine._state.scoring import suppression_metrics
+
+
+class ScoreSnapshot(NamedTuple):
+    """All four canonical scores from a single state dict."""
+
+    overall: float | None
+    objective: float | None
+    strict: float | None
+    verified: float | None
+
+
+def score_snapshot(state: dict) -> ScoreSnapshot:
+    """Load all four canonical scores from *state* in one call."""
+    return ScoreSnapshot(
+        overall=get_overall_score(state),
+        objective=get_objective_score(state),
+        strict=get_strict_score(state),
+        verified=get_verified_strict_score(state),
+    )
+
 
 __all__ = [
     "CURRENT_VERSION",
@@ -42,8 +70,11 @@ __all__ = [
     "DEFAULT_FINDING_NOISE_GLOBAL_BUDGET",
     "Finding",
     "MergeScanOptions",
+    "ScoreSnapshot",
+    "StateModel",
     "STATE_DIR",
     "STATE_FILE",
+    "coerce_assessment_score",
     "add_ignore",
     "apply_finding_noise_budget",
     "get_objective_score",
@@ -63,6 +94,7 @@ __all__ = [
     "resolve_finding_noise_settings",
     "resolve_findings",
     "save_state",
+    "score_snapshot",
     "suppression_metrics",
     "utc_now",
 ]

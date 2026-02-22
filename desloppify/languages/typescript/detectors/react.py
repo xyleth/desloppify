@@ -10,7 +10,7 @@ from desloppify.languages.typescript.detectors._smell_helpers import (
     _strip_ts_comments,
     scan_code,
 )
-from desloppify.utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
+from desloppify.utils import PROJECT_ROOT, colorize, find_tsx_files, print_table, rel
 
 MAX_EFFECT_BODY = 1000  # max characters to scan for brace-matching a useEffect callback
 MAX_FUNC_SCAN = 2000  # max lines to scan for function body extent
@@ -458,11 +458,11 @@ def cmd_react(args: argparse.Namespace) -> None:
         return
 
     if not entries:
-        print(c("\nNo state sync anti-patterns found.", "green"))
+        print(colorize("\nNo state sync anti-patterns found.", "green"))
         return
 
     print(
-        c(
+        colorize(
             f"\nState sync anti-patterns (useEffect only calls setters): "
             f"{len(entries)}\n",
             "bold",

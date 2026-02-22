@@ -7,9 +7,39 @@ instead of maintaining their own lists.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from desloppify.core.registry_order import DISPLAY_ORDER
+DISPLAY_ORDER = [
+    "logs",
+    "unused",
+    "exports",
+    "deprecated",
+    "structural",
+    "props",
+    "single_use",
+    "coupling",
+    "cycles",
+    "orphaned",
+    "facade",
+    "patterns",
+    "naming",
+    "smells",
+    "react",
+    "dupes",
+    "stale_exclude",
+    "dict_keys",
+    "flat_dirs",
+    "signature",
+    "global_mutable_config",
+    "private_imports",
+    "layer_violation",
+    "test_coverage",
+    "security",
+    "concerns",
+    "review",
+    "subjective_review",
+]
 
 
 @dataclass(frozen=True)
@@ -22,6 +52,7 @@ class DetectorMeta:
     fixers: tuple[str, ...] = ()
     tool: str = ""  # "move" or empty
     structural: bool = False  # Merges under "structural" in display
+    needs_judgment: bool = False  # Findings need LLM design judgment (vs clear-cut fixes)
 
 
 DETECTORS: dict[str, DetectorMeta] = {
@@ -46,9 +77,8 @@ DETECTORS: dict[str, DetectorMeta] = {
         "exports",
         "exports",
         "Code quality",
-        "auto_fix",
-        "remove dead exports",
-        fixers=("dead-exports",),
+        "manual_fix",
+        "run `knip --fix` to remove dead exports",
     ),
     "smells": DetectorMeta(
         "smells",
@@ -57,6 +87,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "auto_fix",
         "fix code smells — dead useEffect, empty if chains",
         fixers=("dead-useeffect", "empty-if-chain"),
+        needs_judgment=True,
     ),
     # ── Reorganize (move tool) ────────────────────────────
     "orphaned": DetectorMeta(
@@ -66,6 +97,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "delete dead files or relocate with `desloppify move`",
         tool="move",
+        needs_judgment=True,
     ),
     "flat_dirs": DetectorMeta(
         "flat_dirs",
@@ -74,6 +106,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "create subdirectories and use `desloppify move`",
         tool="move",
+        needs_judgment=True,
     ),
     "naming": DetectorMeta(
         "naming",
@@ -82,6 +115,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "rename files with `desloppify move` to fix conventions",
         tool="move",
+        needs_judgment=True,
     ),
     "single_use": DetectorMeta(
         "single_use",
@@ -90,6 +124,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "inline or relocate with `desloppify move`",
         tool="move",
+        needs_judgment=True,
     ),
     "coupling": DetectorMeta(
         "coupling",
@@ -98,6 +133,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "fix boundary violations with `desloppify move`",
         tool="move",
+        needs_judgment=True,
     ),
     "cycles": DetectorMeta(
         "cycles",
@@ -106,6 +142,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "break cycles by extracting shared code or using `desloppify move`",
         tool="move",
+        needs_judgment=True,
     ),
     "facade": DetectorMeta(
         "facade",
@@ -114,6 +151,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "reorganize",
         "flatten re-export facades or consolidate barrel files",
         tool="move",
+        needs_judgment=True,
     ),
     # ── Refactor ──────────────────────────────────────────
     "structural": DetectorMeta(
@@ -122,6 +160,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "File health",
         "refactor",
         "decompose large files — extract logic into focused modules",
+        needs_judgment=True,
     ),
     "props": DetectorMeta(
         "props",
@@ -129,6 +168,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "refactor",
         "split bloated components, extract sub-components",
+        needs_judgment=True,
     ),
     "react": DetectorMeta(
         "react",
@@ -136,6 +176,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "refactor",
         "refactor React antipatterns (state sync, provider nesting, hook bloat)",
+        needs_judgment=True,
     ),
     "dupes": DetectorMeta(
         "dupes",
@@ -143,6 +184,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Duplication",
         "refactor",
         "extract shared utility or consolidate duplicates",
+        needs_judgment=True,
     ),
     "patterns": DetectorMeta(
         "patterns",
@@ -150,6 +192,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "refactor",
         "align to single pattern across the codebase",
+        needs_judgment=True,
     ),
     "dict_keys": DetectorMeta(
         "dict_keys",
@@ -158,6 +201,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "refactor",
         "fix dict key mismatches — dead writes are likely dead code, "
         "schema drift suggests a typo or missed rename",
+        needs_judgment=True,
     ),
     "test_coverage": DetectorMeta(
         "test_coverage",
@@ -172,6 +216,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "refactor",
         "consolidate inconsistent function signatures",
+        needs_judgment=True,
     ),
     "global_mutable_config": DetectorMeta(
         "global_mutable_config",
@@ -179,6 +224,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "manual_fix",
         "refactor module-level mutable state — use explicit init functions or dependency injection",
+        needs_judgment=True,
     ),
     "private_imports": DetectorMeta(
         "private_imports",
@@ -186,6 +232,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "manual_fix",
         "stop importing private symbols across module boundaries",
+        needs_judgment=True,
     ),
     "layer_violation": DetectorMeta(
         "layer_violation",
@@ -193,6 +240,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "manual_fix",
         "fix architectural layer violations — move shared code to the correct layer",
+        needs_judgment=True,
     ),
     "responsibility_cohesion": DetectorMeta(
         "responsibility_cohesion",
@@ -200,6 +248,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "refactor",
         "split modules with too many responsibilities — extract focused sub-modules",
+        needs_judgment=True,
     ),
     "boilerplate_duplication": DetectorMeta(
         "boilerplate_duplication",
@@ -207,6 +256,7 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Duplication",
         "refactor",
         "extract shared boilerplate into reusable helpers or base classes",
+        needs_judgment=True,
     ),
     "stale_wontfix": DetectorMeta(
         "stale_wontfix",
@@ -214,6 +264,13 @@ DETECTORS: dict[str, DetectorMeta] = {
         "Code quality",
         "manual_fix",
         "re-evaluate old wontfix decisions — fix, document, or escalate",
+    ),
+    "concerns": DetectorMeta(
+        "concerns",
+        "design concerns",
+        "Design coherence",
+        "refactor",
+        "address design concerns confirmed by subjective evaluation",
     ),
     # ── Manual fix ────────────────────────────────────────
     "deprecated": DetectorMeta(
@@ -255,6 +312,30 @@ DETECTORS: dict[str, DetectorMeta] = {
 }
 
 _DISPLAY_ORDER = list(DISPLAY_ORDER)
+
+JUDGMENT_DETECTORS: frozenset[str] = frozenset(
+    name for name, meta in DETECTORS.items() if meta.needs_judgment
+)
+
+_on_register_callbacks: list[Callable[[], None]] = []
+
+
+def on_detector_registered(callback: Callable[[], None]) -> None:
+    """Register a callback invoked after register_detector(). No-arg."""
+    _on_register_callbacks.append(callback)
+
+
+def register_detector(meta: DetectorMeta) -> None:
+    """Register a detector at runtime (used by generic plugins)."""
+    global JUDGMENT_DETECTORS
+    DETECTORS[meta.name] = meta
+    if meta.name not in _DISPLAY_ORDER:
+        _DISPLAY_ORDER.append(meta.name)
+    JUDGMENT_DETECTORS = frozenset(
+        name for name, m in DETECTORS.items() if m.needs_judgment
+    )
+    for cb in _on_register_callbacks:
+        cb()
 
 
 def detector_names() -> list[str]:

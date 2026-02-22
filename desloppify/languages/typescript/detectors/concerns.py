@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from desloppify.core.fallbacks import log_best_effort_failure
-from desloppify.utils import PROJECT_ROOT, c, find_tsx_files, print_table, rel
+from desloppify.utils import PROJECT_ROOT, colorize, find_tsx_files, print_table, rel
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +91,9 @@ def cmd_concerns(args: Any) -> None:
         print(json.dumps({"count": len(entries), "entries": entries}, indent=2))
         return
     if not entries:
-        print(c("No mixed-concern files found.", "green"))
+        print(colorize("No mixed-concern files found.", "green"))
         return
-    print(c(f"\nMixed concerns: {len(entries)} files\n", "bold"))
+    print(colorize(f"\nMixed concerns: {len(entries)} files\n", "bold"))
     rows = []
     for e in entries[: args.top]:
         rows.append([rel(e["file"]), str(e["loc"]), ", ".join(e["concerns"])])

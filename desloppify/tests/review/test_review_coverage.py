@@ -13,8 +13,8 @@ from desloppify.engine.detectors.review_coverage import (
     detect_holistic_review_staleness,
     detect_review_coverage,
 )
-from desloppify.engine.state_internal.merge import find_suspect_detectors
-from desloppify.engine.state_internal.schema import empty_state
+from desloppify.engine._state.merge import find_suspect_detectors
+from desloppify.engine._state.schema import empty_state
 from desloppify.intelligence.review import (
     DEFAULT_DIMENSIONS,
     DIMENSION_PROMPTS,
@@ -22,7 +22,7 @@ from desloppify.intelligence.review import (
 from desloppify.intelligence.review import (
     import_review_findings as _import_review_findings_impl,
 )
-from desloppify.languages.framework.runtime import make_lang_run
+from desloppify.languages._framework.runtime import make_lang_run
 from desloppify.languages.python import PythonConfig
 from desloppify.languages.typescript import TypeScriptConfig
 from desloppify.scoring import DIMENSIONS, FILE_BASED_DETECTORS

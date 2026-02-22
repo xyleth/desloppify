@@ -8,7 +8,7 @@
     3. Cross-reference findings with the sibling_behavior and convention data
     4. For simple issues (missing import, wrong name): fix directly in code, then note as resolved
     5. For cross-cutting issues: write to findings.json (format described in system_prompt)
-    6. Import: desloppify review --import findings.json --holistic
+    6. Import: desloppify review --import findings.json
     7. Run `desloppify issues` to see the work queue, then fix each finding and resolve
 
   AGENT PLAN:

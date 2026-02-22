@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from desloppify.languages.framework.finding_factories import (
+from desloppify.languages._framework.finding_factories import (
     make_single_use_findings,
     make_unused_findings,
 )

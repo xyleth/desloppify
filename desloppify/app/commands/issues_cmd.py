@@ -1,5 +1,8 @@
 """issues command: state-backed work queue for review findings."""
 
+from __future__ import annotations
+
+import argparse
 import sys
 from pathlib import Path
 
@@ -8,7 +11,7 @@ from desloppify.app.commands.helpers.query import write_query
 from desloppify.app.commands.helpers.rendering import print_agent_plan
 from desloppify.app.commands.helpers.runtime import command_runtime
 from desloppify.core.issues_render import finding_weight, render_issue_detail
-from desloppify.engine.work_queue_internal.issues import (
+from desloppify.engine._work_queue.issues import (
     impact_label,
     list_open_review_findings,
     update_investigation,
@@ -18,7 +21,7 @@ from desloppify.state import save_state
 from desloppify.utils import colorize
 
 
-def cmd_issues(args):
+def cmd_issues(args: argparse.Namespace) -> None:
     """Dispatch to list/show/update based on subcommand."""
     action = getattr(args, "issues_action", None)
     if action in (None, "list"):
@@ -48,7 +51,7 @@ def _list_issues(args):
         print(colorize("\n  No review findings open.\n", "dim"))
         print(
             colorize(
-                "  Next command: `desloppify review --prepare --holistic --refresh`",
+                "  Next command: `desloppify review --prepare`",
                 "dim",
             )
         )
@@ -58,7 +61,7 @@ def _list_issues(args):
                 "command": "issues",
                 "action": "list",
                 "items": [],
-                "next_command": "desloppify review --prepare --holistic --refresh",
+                "next_command": "desloppify review --prepare",
                 "narrative": narrative,
             }
         )
@@ -169,7 +172,7 @@ def _update_issue(args):
     """Add investigation notes to an issue."""
     runtime = command_runtime(args)
     state = runtime.state
-    sp = runtime.state_path
+    state_file = runtime.state_path
     narrative = compute_narrative(state, context=NarrativeContext(command="issues"))
     items = list_open_review_findings(state)
     number = args.number
@@ -204,7 +207,7 @@ def _update_issue(args):
         )
         return
 
-    save_state(state, sp)
+    save_state(state, state_file)
     lang = resolve_lang(args)
     lang_name = lang.name if lang else finding.get("lang", "unknown")
     print(colorize(f"\n  Investigation saved for issue #{number}.", "green"))

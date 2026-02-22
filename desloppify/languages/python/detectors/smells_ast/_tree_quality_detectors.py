@@ -84,16 +84,16 @@ def _detect_mutable_class_var(
 def _detect_unreachable_code(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag statements after unconditional return/raise/break/continue.
 
     Walks every statement block (function body, if/else body, etc.) and flags
     any statement that follows an unconditional flow-control statement.
     """
     _TERMINAL = (ast.Return, ast.Raise, ast.Break, ast.Continue)
+    results: list[dict] = []
 
     def _check_block(stmts: list[ast.stmt]):
         for i, stmt in enumerate(stmts):
@@ -104,7 +104,7 @@ def _detect_unreachable_code(
                     next_stmt.value, ast.Constant
                 ):
                     continue
-                smell_counts["unreachable_code"].append(
+                results.append(
                     {
                         "file": filepath,
                         "line": next_stmt.lineno,
@@ -124,21 +124,22 @@ def _detect_unreachable_code(
 
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         _check_block(node.body)
+    return results
 
 
 def _detect_constant_return(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag functions that always return the same constant value.
 
     Analyzes all return paths — if every return statement returns the same
     literal value (True, False, None, a number, or a string), the function
     likely has dead logic or is a stub masquerading as real code.
     """
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         # Skip tiny functions (stubs/pass-only already caught by dead_function)
         if not hasattr(node, "end_lineno") or not node.end_lineno:
@@ -182,22 +183,22 @@ def _detect_constant_return(
             # Skip functions that always return None — they're just procedures
             if val == "None":
                 continue
-            smell_counts["constant_return"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": node.lineno,
                     "content": f"{node.name}() always returns {val} ({len(returns)} return sites)",
                 }
             )
+    return results
 
 
 def _detect_noop_function(
     filepath: str,
     tree: ast.Module,
-    smell_counts: dict[str, list],
     *,
     all_nodes: tuple[ast.AST, ...] | None = None,
-):
+) -> list[dict]:
     """Flag non-trivial functions whose body does nothing useful.
 
     A function is noop if its body contains only: pass, return, logging calls,
@@ -222,6 +223,7 @@ def _detect_noop_function(
         "__len__",
     }
 
+    results: list[dict] = []
     for node in _iter_nodes(tree, all_nodes, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if node.name in _SKIP_NAMES:
             continue
@@ -251,10 +253,11 @@ def _detect_noop_function(
             break
 
         if all_trivial:
-            smell_counts["noop_function"].append(
+            results.append(
                 {
                     "file": filepath,
                     "line": node.lineno,
                     "content": f"{node.name}() — {len(body)} statements, all trivial (pass/return/log)",
                 }
             )
+    return results

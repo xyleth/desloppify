@@ -180,6 +180,49 @@ class TestOutputStructure:
 # ── Clean code ────────────────────────────────────────────
 
 
+class TestInitReexportFiltering:
+    """F401 in __init__.py should be filtered — those are re-exports, not dead code."""
+
+    def test_init_reexport_not_flagged(self, tmp_path):
+        """Unused import in __init__.py should be suppressed (it's a re-export)."""
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "utils.py").write_text("def helper(): pass\n")
+        (pkg / "__init__.py").write_text("from .utils import helper\n")
+        entries, total = detect_unused(pkg, category="imports")
+        names = [e["name"] for e in entries]
+        assert "helper" not in names
+
+    def test_regular_file_still_flagged(self, tmp_path):
+        """Unused imports in regular .py files should still be caught."""
+        path = _write_py(
+            tmp_path,
+            """\
+            import os
+            x = 1
+        """,
+            filename="regular.py",
+        )
+        entries, _ = detect_unused(path, category="imports")
+        names = [e["name"] for e in entries]
+        assert "os" in names
+
+    def test_init_vars_still_flagged(self, tmp_path):
+        """Unused variables in __init__.py should still be flagged (only F401 is suppressed)."""
+        pkg = tmp_path / "mypkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text(
+            textwrap.dedent("""\
+            def setup():
+                unused_var = 42
+                return 1
+        """)
+        )
+        entries, _ = detect_unused(pkg, category="vars")
+        names = [e["name"] for e in entries]
+        assert "unused_var" in names
+
+
 class TestCleanCode:
     def test_no_unused_in_clean_code(self, tmp_path):
         path = _write_py(

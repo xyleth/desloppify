@@ -3,35 +3,20 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from functools import lru_cache
 
+from desloppify.core._internal.text_utils import is_numeric
+from desloppify.engine._scoring.subjective.core import DISPLAY_NAMES
 from desloppify.intelligence.review.dimensions.data import (
     load_dimensions,
     load_dimensions_for_lang,
 )
 
-# Backward-compatible defaults for dimensions that predate prompt-level metadata.
-_LEGACY_DISPLAY_NAMES: dict[str, str] = {
-    "cross_module_architecture": "Cross-Module Arch",
-    "initialization_coupling": "Init Coupling",
-    "convention_outlier": "Convention Drift",
-    "error_consistency": "Error Consistency",
-    "abstraction_fitness": "Abstraction Fit",
-    "dependency_health": "Dep Health",
-    "test_strategy": "Test Strategy",
-    "api_surface_coherence": "API Coherence",
-    "authorization_consistency": "Auth Consistency",
-    "ai_generated_debt": "AI Generated Debt",
-    "incomplete_migration": "Stale Migration",
-    "package_organization": "Structure Nav",
-    "high_level_elegance": "High Elegance",
-    "mid_level_elegance": "Mid Elegance",
-    "low_level_elegance": "Low Elegance",
-    "naming_quality": "Naming Quality",
-    "logic_clarity": "Logic Clarity",
-    "type_safety": "Type Safety",
-    "contract_coherence": "Contracts",
-}
+logger = logging.getLogger(__name__)
+
+# Canonical display names — imported from engine/_scoring/subjective/core.py.
+_LEGACY_DISPLAY_NAMES: dict[str, str] = DISPLAY_NAMES
 
 _LEGACY_SUBJECTIVE_WEIGHTS_BY_DISPLAY: dict[str, float] = {
     "high elegance": 22.0,
@@ -99,7 +84,7 @@ def _extract_prompt_meta(entry: object) -> dict[str, object]:
         out["display_name"] = meta["display_name"].strip()
 
     weight = meta.get("weight")
-    if isinstance(weight, int | float) and not isinstance(weight, bool):
+    if is_numeric(weight):
         out["weight"] = max(0.0, float(weight))
 
     enabled = meta.get("enabled_by_default")
@@ -186,7 +171,8 @@ def _build_subjective_dimension_metadata(
                 prompts=lang_prompts,
                 override_existing=bool(lang_name),
             )
-        except (ValueError, RuntimeError):
+        except (ValueError, RuntimeError) as exc:
+            logger.debug("Failed to load dimensions for lang %s: %s", name, exc)
             continue
 
     for dim, payload in out.items():
@@ -259,7 +245,7 @@ def dimension_display_name(dimension_name: str, *, lang_name: str | None = None)
 def dimension_weight(dimension_name: str, *, lang_name: str | None = None) -> float:
     meta = get_dimension_metadata(dimension_name, lang_name=lang_name)
     raw = meta.get("weight", 1.0)
-    if isinstance(raw, int | float) and not isinstance(raw, bool):
+    if is_numeric(raw):
         return max(0.0, float(raw))
     return 1.0
 

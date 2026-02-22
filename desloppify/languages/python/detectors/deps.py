@@ -78,16 +78,10 @@ def build_dep_graph(
                 module = node.module or ""
                 module_path = dots + module
 
-                # Resolve each imported name for dots-only imports (from . import X)
-                if not module and node.level:
-                    import_names = ", ".join(a.name for a in node.names)
-                    targets = _resolve_python_from_import(
-                        module_path, import_names, filepath, path
-                    )
-                else:
-                    targets = _resolve_python_from_import(
-                        module_path, "", filepath, path
-                    )
+                import_names = ", ".join(a.name for a in node.names)
+                targets = _resolve_python_from_import(
+                    module_path, import_names, filepath, path
+                )
 
                 for target in targets:
                     graph[source_resolved]["imports"].add(target)
@@ -157,8 +151,27 @@ def _resolve_python_from_import(
         return results
     else:
         # Normal case: from .foo import bar, from ..foo.bar import baz
+        results = []
         target = _resolve_python_import(module_path, source_file, scan_root_path)
-        return [target] if target else []
+
+        # Also try resolving each imported name as a submodule.
+        # e.g. ``from desloppify.engine._state import filtering`` should
+        # resolve to ``_state/filtering.py``, not just ``_state/__init__.py``.
+        if target and import_names:
+            names = [n.strip().split()[0] for n in import_names.split(",")]
+            for name in names:
+                name = name.strip("()")
+                if not name:
+                    continue
+                submod = _resolve_python_import(
+                    f"{module_path}.{name}", source_file, scan_root_path
+                )
+                if submod:
+                    results.append(submod)
+
+        if target:
+            results.append(target)
+        return results
 
 
 def _resolve_python_import(

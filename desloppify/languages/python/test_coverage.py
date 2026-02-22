@@ -10,7 +10,7 @@ _PY_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+", re.MULTILINE)
 
 # Import parsing helpers
 PY_IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE
+    r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)|import\s+([\w.]+))", re.MULTILINE
 )
 
 ASSERT_PATTERNS = [
@@ -74,12 +74,24 @@ def resolve_barrel_reexports(_filepath: str, _production_files: set[str]) -> set
 
 
 def parse_test_import_specs(content: str) -> list[str]:
-    """Extract import specs from Python test content."""
+    """Extract import specs from Python test content.
+
+    For ``from package import name``, emits both ``package`` and
+    ``package.name`` so that submodule imports (e.g.
+    ``from desloppify.engine._state import filtering``) resolve to
+    the submodule file rather than just the package ``__init__.py``.
+    """
     specs: list[str] = []
     for m in PY_IMPORT_RE.finditer(content):
-        module = m.group(1) or m.group(2)
-        if module:
-            specs.append(module)
+        if m.group(3):
+            # Plain ``import X.Y.Z``
+            specs.append(m.group(3))
+        elif m.group(1):
+            package = m.group(1)
+            imported_name = m.group(2)
+            specs.append(package)
+            if imported_name:
+                specs.append(f"{package}.{imported_name}")
     return specs
 
 

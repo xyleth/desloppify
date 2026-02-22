@@ -35,8 +35,8 @@ desloppify scan --path . --reset-subjective
 Language is auto-detected. To override: desloppify --lang python scan --path .
 (note: --lang goes BEFORE the subcommand)
 
-Fix what it finds, then "desloppify resolve fixed <id> --note 'what changed' --attest 'I have actually improved how [WHAT YOU IMPROVED EXPLICITLY] enough to honestly justify a score of [SCORE] and I am not gaming the score.'" and rescan.
-For false positives: "desloppify resolve wontfix <id> --note 'reason' --attest 'I have actually improved how [WHAT YOU IMPROVED EXPLICITLY] enough to honestly justify a score of [SCORE] and I am not gaming the score.'" (note is required — don't skip work; attestation must include the keywords "I have actually" and "not gaming").
+Fix what it finds, then "desloppify resolve fixed <id> --note 'what changed' --attest 'I have actually [DESCRIBE THE CONCRETE CHANGE YOU MADE] and I am not gaming the score by resolving without fixing.'" and rescan.
+For false positives: "desloppify resolve wontfix <id> --note 'reason' --attest 'I have actually verified this is intentional/false-positive and I am not gaming the score by resolving without fixing.'" (note is required — don't skip work; attestation must include the keywords "I have actually" and "not gaming").
 Keep going until all issues are resolved.
 
 Because state persists, desloppify works best when run regularly. Ask the user if they'd
@@ -62,13 +62,13 @@ curl -fsSL https://raw.githubusercontent.com/peteromallet/desloppify/main/docs/S
 
 ## From Vibe Coding to Vibe Engineering
 
-Vibe coding gets things built fast. But speed without structure creates codebases that fight back — progress slows, bugs multiply, and new features become a negotiation with past decisions.
+Vibe coding gets things built fast. But the codebases it produces tend to rot in ways that are hard to see and harder to fix — not just the mechanical stuff like dead imports, but the structural kind. Abstractions that made sense at first stop making sense. Naming drifts. Error handling is done three different ways. The codebase works, but working in it gets worse over time.
 
-We believe agents can do more than just write code. They can understand it, evaluate it, and hold it to a standard — if you give them the right framework. The subjective stuff that actually matters — whether abstractions make sense, whether patterns are consistent, whether the code reads like it was written with intent — these are things LLMs can now recognize when asked the right questions.
+LLMs are actually good at spotting this now, if you ask them the right questions. That's the core bet here — that an agent with the right framework can hold a codebase to a real standard, the kind that used to require a senior engineer paying close attention over months.
 
-Desloppify is our attempt to define what "good" looks like as an optimizable target, and to make that target honest enough that improving the score means genuinely improving the codebase. Not suppressing warnings. Not renaming things. Actually making it better.
+So we're trying to define what "good" looks like as a score that's actually worth optimizing. Not a lint score you game to 100 by suppressing warnings. Something where improving the number means the codebase genuinely got better. That's hard, and we're not done, but the anti-gaming stuff matters to us a lot — it's the difference between a useful signal and a vanity metric.
 
-The end goal is that anyone — regardless of experience level — can use AI agents to build and maintain codebases that a seasoned engineer would be proud of.
+The hope is that anyone can use this to build something a seasoned engineer would look at and respect. That's the bar we're aiming for.
 
 If you'd like to join a community of vibe engineers who want to build beautiful things, [come hang out](https://discord.gg/aZdzbZrHaY).
 

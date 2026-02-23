@@ -50,7 +50,7 @@ def do_prepare(
     )
     data["config"] = _redacted_review_config(config)
     data["narrative"] = narrative
-    data["next_command"] = "desloppify review --import findings.json"
+    data["next_command"] = "desloppify review --import .desloppify/findings.json"
     total = data.get("total_files", 0)
     if total == 0:
         print(
@@ -106,18 +106,18 @@ def do_prepare(
             "  1. Run each investigation batch independently (parallel-friendly)", "dim"
         )
     )
-    print(colorize("  2. Capture findings in findings.json", "dim"))
+    print(colorize("  2. Capture findings in .desloppify/findings.json", "dim"))
     print(colorize("  3. Import and rescan", "dim"))
     print(
         colorize(
-            "  Next command to improve subjective scores: `desloppify review --import findings.json`",
+            "  Next command to improve subjective scores: `desloppify review --import .desloppify/findings.json`",
             "dim",
         )
     )
     print(
         colorize(
             "\n  → query.json updated. "
-            "Review codebase, then: desloppify review --import findings.json",
+            "Review codebase, then: desloppify review --import .desloppify/findings.json",
             "cyan",
         )
     )

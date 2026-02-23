@@ -1,5 +1,7 @@
 # Desloppify - an agent harness to make your codebase 🤌
 
+[![PyPI version](https://img.shields.io/pypi/v/desloppify)](https://pypi.org/project/desloppify/) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+
 Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It finds issues in two ways:
 
 1. **Subjective** — Examines the codebase from multiple subjective perspectives: abstraction quality, naming consistency, module boundaries, error handling patterns, convention drift, and language-specific questions. LLM evaluation scores these and tracks them as findings.
@@ -23,7 +25,9 @@ Install or update desloppify, then scan this codebase for code quality issues (d
 duplication, complexity, smells). It tracks findings persistently across sessions and reports
 a health score — state is cumulative, so each scan builds on previous progress.
 
-pip install --upgrade git+https://github.com/peteromallet/desloppify.git
+Requires Python 3.11+. Install from PyPI:
+
+pip install --upgrade desloppify
 desloppify update-skill claude    # pick yours: claude, cursor, codex, copilot, windsurf, gemini
 desloppify scan --path .
 desloppify status

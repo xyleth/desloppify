@@ -17,6 +17,7 @@ subjective_*.json
 review_findings.json
 review_batch_*.json
 findings.json
+findings_*.json
 scorecard.png
 .pytest*
 .tmp*

@@ -4,11 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desloppify"
-version = "0.7.0"
+version = "0.7.1"
 description = "Multi-language codebase health scanner and technical debt tracker"
-requires-python = ">=3.10"
-license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "Peter O'Malley", email = "pom@banodoco.ai"},
+]
+keywords = ["code-quality", "technical-debt", "linter", "static-analysis", "refactoring"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
 dependencies = ["Pillow>=9.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/peteromallet/desloppify"
+Repository = "https://github.com/peteromallet/desloppify"
+Issues = "https://github.com/peteromallet/desloppify/issues"
 
 [project.optional-dependencies]
 treesitter = ["tree-sitter-language-pack>=0.3"]
@@ -37,7 +60,7 @@ testpaths = ['desloppify/tests', 'desloppify/languages/python/tests', 'desloppif
 norecursedirs = ["desloppify/tests/fixtures"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]

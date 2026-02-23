@@ -37,6 +37,7 @@ from desloppify.languages.python.phases import (
     _phase_responsibility_cohesion,
     _phase_smells,
     _phase_structural,
+    _phase_uncalled_functions,
     _phase_unused,
 )
 from desloppify.languages.python.phases import (
@@ -137,6 +138,7 @@ class PythonConfig(LangConfig):
                 DetectorPhase("Structural analysis", _phase_structural),
                 DetectorPhase("Responsibility cohesion", _phase_responsibility_cohesion),
                 DetectorPhase("Coupling + cycles + orphaned", _phase_coupling),
+                DetectorPhase("Uncalled functions", _phase_uncalled_functions),
                 detector_phase_test_coverage(),
                 DetectorPhase("Code smells", _phase_smells),
                 DetectorPhase("Mutable state", _phase_mutable_state),

@@ -31,6 +31,7 @@ from desloppify.languages._framework.finding_factories import (
 from desloppify.languages.python.detectors import (
     coupling_contracts as coupling_contracts_detector_mod,
 )
+from desloppify.languages.python.detectors import uncalled as uncalled_detector_mod
 from desloppify.languages.python.detectors import deps as deps_detector_mod
 from desloppify.languages.python.detectors import facade as facade_detector_mod
 from desloppify.languages.python.detectors import (
@@ -323,6 +324,35 @@ def _phase_responsibility_cohesion(
         "responsibility_cohesion": adjust_potential(lang.zone_map, candidates)
     }
 
+def _phase_uncalled_functions(
+    path: Path, lang: LangRun
+) -> tuple[list[Finding], dict[str, int]]:
+    """Detect underscore-prefixed top-level functions with zero references."""
+    entries, total = uncalled_detector_mod.detect_uncalled_functions(
+        path, lang.dep_graph
+    )
+    zm = lang.zone_map
+    entries = filter_entries(zm, entries, "uncalled_functions")
+
+    results: list[Finding] = []
+    for entry in entries:
+        results.append(
+            state_mod.make_finding(
+                "uncalled_functions",
+                entry["file"],
+                entry["name"],
+                tier=3,
+                confidence="high",
+                summary=f"Uncalled private function: {entry['name']}() — {entry['loc']} LOC, zero references",
+                detail={"line": entry["line"], "loc": entry["loc"]},
+            )
+        )
+
+    if results:
+        log(f"         uncalled functions: {len(results)} dead private functions")
+    return results, {"uncalled_functions": adjust_potential(zm, total)}
+
+
 __all__ = [
     "PY_COMPLEXITY_SIGNALS",
     "PY_ENTRY_PATTERNS",
@@ -335,5 +365,6 @@ __all__ = [
     "_phase_responsibility_cohesion",
     "_phase_smells",
     "_phase_structural",
+    "_phase_uncalled_functions",
     "_phase_unused",
 ]

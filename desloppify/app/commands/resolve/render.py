@@ -117,7 +117,6 @@ def _print_subjective_reset_hint(
     state: dict,
     all_resolved: list[str],
     prev_subjective_scores: dict[str, float],
-    assessment_score_fn,
 ) -> None:
     has_review = any(
         state["findings"].get(fid, {}).get("detector") == "review"

@@ -84,7 +84,7 @@ def _print_review_quality(quality: object, *, colorize_fn) -> None:
 
 def _collect_reviewed_files_from_batches(
     *,
-    batches: list[dict],
+    batches: list[dict[str, object]],
     selected_indexes: list[int],
 ) -> list[str]:
     """Collect normalized file paths reviewed in the selected batch set."""
@@ -94,8 +94,6 @@ def _collect_reviewed_files_from_batches(
         if idx < 0 or idx >= len(batches):
             continue
         batch = batches[idx]
-        if not isinstance(batch, dict):
-            continue
         files = batch.get("files_to_read", [])
         if not isinstance(files, list):
             continue

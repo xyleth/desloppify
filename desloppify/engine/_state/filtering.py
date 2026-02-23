@@ -5,6 +5,8 @@ from __future__ import annotations
 import fnmatch
 
 __all__ = [
+    "finding_in_scan_scope",
+    "open_scope_breakdown",
     "path_scoped_findings",
     "is_ignored",
     "matched_ignore_pattern",
@@ -28,16 +30,50 @@ def path_scoped_findings(
     scan_path: str | None,
 ) -> dict[str, Finding]:
     """Filter findings to those within the given scan path."""
-    if not scan_path or scan_path == ".":
-        return findings
-
-    prefix = scan_path.rstrip("/") + "/"
     return {
         finding_id: finding
         for finding_id, finding in findings.items()
-        if finding.get("file", "").startswith(prefix)
-        or finding.get("file") == scan_path
-        or finding.get("file") == "."
+        if finding_in_scan_scope(str(finding.get("file", "")), scan_path)
+    }
+
+
+def finding_in_scan_scope(file_path: str, scan_path: str | None) -> bool:
+    """Return True when a file path belongs to the active scan scope."""
+    if not scan_path or scan_path == ".":
+        return True
+    prefix = scan_path.rstrip("/") + "/"
+    return (
+        file_path.startswith(prefix)
+        or file_path == scan_path
+        or file_path == "."
+    )
+
+
+def open_scope_breakdown(
+    findings: dict[str, Finding],
+    scan_path: str | None,
+    *,
+    detector: str | None = None,
+) -> dict[str, int]:
+    """Return open-finding counts split by in-scope vs out-of-scope carryover."""
+    in_scope = 0
+    out_of_scope = 0
+
+    for finding in findings.values():
+        if finding.get("status") != "open":
+            continue
+        if detector is not None and finding.get("detector") != detector:
+            continue
+        file_path = str(finding.get("file", ""))
+        if finding_in_scan_scope(file_path, scan_path):
+            in_scope += 1
+        else:
+            out_of_scope += 1
+
+    return {
+        "in_scope": in_scope,
+        "out_of_scope": out_of_scope,
+        "global": in_scope + out_of_scope,
     }
 
 

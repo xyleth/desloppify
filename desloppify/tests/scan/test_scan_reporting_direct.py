@@ -66,7 +66,38 @@ def test_show_score_delta_prints_scores_and_wontfix_gap(monkeypatch, capsys):
     assert "strict 80.0/100" in out
     assert "verified 79.0/100" in out
     assert "12 wontfix" in out
+    assert "open (in-scope): 4" in out
+    assert "open (out-of-scope carried): 0" in out
+    assert "open (global): 4" in out
     assert "gap between overall and strict" in out
+
+
+def test_show_score_delta_prints_scope_split_for_out_of_scope_open(monkeypatch, capsys):
+    import desloppify.state as state_mod
+
+    monkeypatch.setattr(state_mod, "get_overall_score", lambda _state: 95.0)
+    monkeypatch.setattr(state_mod, "get_objective_score", lambda _state: 95.0)
+    monkeypatch.setattr(state_mod, "get_strict_score", lambda _state: 94.0)
+    monkeypatch.setattr(state_mod, "get_verified_strict_score", lambda _state: 93.0)
+
+    scan_reporting_summary_mod.show_score_delta(
+        state={
+            "scan_path": "src",
+            "stats": {"open": 1, "total": 1, "wontfix": 0},
+            "findings": {
+                "a": {"status": "open", "file": "src/a.py"},
+                "b": {"status": "open", "file": "scripts/b.py"},
+            },
+        },
+        prev_overall=90.0,
+        prev_objective=90.0,
+        prev_strict=90.0,
+        prev_verified=90.0,
+    )
+    out = capsys.readouterr().out
+    assert "open (in-scope): 1" in out
+    assert "open (out-of-scope carried): 1" in out
+    assert "open (global): 2" in out
 
 
 def test_show_score_delta_surfaces_subjective_integrity_penalty(monkeypatch, capsys):
@@ -533,6 +564,9 @@ def test_show_scorecard_dimensions_and_dimension_hints(monkeypatch, capsys):
         in subjective_out
     )
     assert "Coverage debt: 2 files need review" in subjective_out
+    assert "Scope split: open (in-scope) 2" in subjective_out
+    assert "open (out-of-scope carried) 0" in subjective_out
+    assert "open (global) 2" in subjective_out
     assert "show subjective_review --status open" in subjective_out
 
     scan_reporting_dimensions_mod.show_subjective_paths_section(
@@ -700,6 +734,59 @@ def test_show_subjective_paths_prioritizes_integrity_gap(monkeypatch, capsys):
     assert "High-priority integrity gap:" in out
     assert "review --run-batches --runner codex --parallel --scan-after-import" in out
     assert "Unassessed (0% placeholder): High Elegance" in out
+
+
+def test_show_subjective_paths_prints_out_of_scope_subjective_breakdown(monkeypatch, capsys):
+    monkeypatch.setattr(
+        scan_reporting_dimensions_mod,
+        "_scorecard_dimension_rows",
+        lambda _state, **_kwargs: [
+            (
+                "Naming Quality",
+                {
+                    "score": 100.0,
+                    "strict": 100.0,
+                    "issues": 0,
+                    "checks": 10,
+                    "detectors": {"subjective_assessment": {}},
+                },
+            )
+        ],
+    )
+    scan_reporting_dimensions_mod.show_subjective_paths_section(
+        {
+            "scan_path": "src",
+            "strict_score": 98.0,
+            "findings": {
+                "a": {
+                    "detector": "subjective_review",
+                    "status": "open",
+                    "file": "src/a.py",
+                    "detail": {"reason": "changed"},
+                },
+                "b": {
+                    "detector": "subjective_review",
+                    "status": "open",
+                    "file": "scripts/b.py",
+                    "detail": {"reason": "unreviewed"},
+                },
+            },
+        },
+        {
+            "Naming Quality": {
+                "score": 100.0,
+                "strict": 100.0,
+                "issues": 0,
+                "detectors": {"subjective_assessment": {}},
+            }
+        },
+        target_strict_score=98.0,
+    )
+    out = capsys.readouterr().out
+    assert "Scope split: open (in-scope) 1" in out
+    assert "open (out-of-scope carried) 1" in out
+    assert "open (global) 2" in out
+    assert "Out-of-scope carried reasons: 1 unreviewed" in out
 
 
 def test_show_subjective_paths_shows_target_match_reset_warning(monkeypatch, capsys):

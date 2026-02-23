@@ -33,6 +33,11 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     "review_max_age_days": ConfigKey(
         int, 30, "Days before a file review is considered stale (0 = never)"
     ),
+    "review_batch_max_files": ConfigKey(
+        int,
+        80,
+        "Max files assigned to each holistic review batch (0 = unlimited)",
+    ),
     "holistic_max_age_days": ConfigKey(
         int, 30, "Days before a holistic review is considered stale (0 = never)"
     ),

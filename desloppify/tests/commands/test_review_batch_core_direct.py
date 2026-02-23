@@ -141,3 +141,69 @@ def test_dimension_merge_scorer_penalizes_additional_findings():
         )
     )
     assert one_finding.final_score > three_findings.final_score
+
+
+def test_merge_batch_results_merges_same_identifier_findings():
+    merged = _merge(
+        [
+            {
+                "assessments": {"logic_clarity": 70.0},
+                "dimension_notes": {
+                    "logic_clarity": {
+                        "evidence": ["predicate mismatch in task filtering"],
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                        "confidence": "medium",
+                        "unreported_risk": "",
+                    }
+                },
+                "findings": [
+                    {
+                        "dimension": "logic_clarity",
+                        "identifier": "processing_filter_predicate_mismatch",
+                        "summary": "Mismatch in processing predicates",
+                        "related_files": ["src/a.ts", "src/b.ts"],
+                        "evidence": ["branch A uses OR"],
+                        "suggestion": "align predicates",
+                        "confidence": "high",
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                    }
+                ],
+                "quality": {},
+            },
+            {
+                "assessments": {"logic_clarity": 65.0},
+                "dimension_notes": {
+                    "logic_clarity": {
+                        "evidence": ["task filtering diverges"],
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                        "confidence": "medium",
+                        "unreported_risk": "",
+                    }
+                },
+                "findings": [
+                    {
+                        "dimension": "logic_clarity",
+                        "identifier": "processing_filter_predicate_mismatch",
+                        "summary": "Processing predicate mismatch across hooks",
+                        "related_files": ["src/b.ts", "src/c.ts"],
+                        "evidence": ["branch B uses AND"],
+                        "suggestion": "create shared predicate helper",
+                        "confidence": "high",
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                    }
+                ],
+                "quality": {},
+            },
+        ]
+    )
+    findings = merged["findings"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding["identifier"] == "processing_filter_predicate_mismatch"
+    assert finding["summary"] == "Processing predicate mismatch across hooks"
+    assert set(finding["related_files"]) == {"src/a.ts", "src/b.ts", "src/c.ts"}
+    assert set(finding["evidence"]) == {"branch A uses OR", "branch B uses AND"}

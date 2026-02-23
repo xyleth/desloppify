@@ -345,21 +345,24 @@ def execute_batches(
     run_parallel: bool,
     run_batch_fn,
     safe_write_text_fn,
+    progress_fn=None,
 ) -> list[int]:
     """Execute batch prompts and return failed index list."""
     failures: list[int] = []
     if run_parallel:
         max_workers = max(1, min(len(selected_indexes), 8))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
+            futures = {}
+            for idx in selected_indexes:
+                if callable(progress_fn):
+                    progress_fn(idx, "start", None)
+                future = executor.submit(
                     run_batch_fn,
                     prompt=prompt_files[idx].read_text(),
                     output_file=output_files[idx],
                     log_file=log_files[idx],
-                ): idx
-                for idx in selected_indexes
-            }
+                )
+                futures[future] = idx
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
@@ -367,12 +370,18 @@ def execute_batches(
                 except Exception as exc:  # future.result() can raise any exception from the batch runner
                     safe_write_text_fn(log_files[idx], f"Runner exception:\n{exc}\n")
                     failures.append(idx)
+                    if callable(progress_fn):
+                        progress_fn(idx, "done", 1)
                     continue
                 if code != 0:
                     failures.append(idx)
+                if callable(progress_fn):
+                    progress_fn(idx, "done", code)
         return failures
 
     for idx in selected_indexes:
+        if callable(progress_fn):
+            progress_fn(idx, "start", None)
         code = run_batch_fn(
             prompt=prompt_files[idx].read_text(),
             output_file=output_files[idx],
@@ -380,6 +389,8 @@ def execute_batches(
         )
         if code != 0:
             failures.append(idx)
+        if callable(progress_fn):
+            progress_fn(idx, "done", code)
     return failures
 
 

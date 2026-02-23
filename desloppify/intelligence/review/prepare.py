@@ -69,6 +69,7 @@ class HolisticReviewPrepareOptions:
     dimensions: list[str] | None = None
     files: list[str] | None = None
     include_full_sweep: bool = True
+    max_files_per_batch: int | None = None
 
 def _rel_list(s) -> list[str]:
     """Normalize a set or list of paths to sorted relative paths (max 10)."""
@@ -248,7 +249,12 @@ def prepare_holistic_review(
         dim for dim in (resolved_options.dimensions or []) if dim not in valid_dims
     ]
     invalid_default = [dim for dim in default_dims if dim not in valid_dims]
-    batches = _build_investigation_batches(context, lang, repo_root=path)
+    batches = _build_investigation_batches(
+        context,
+        lang,
+        repo_root=path,
+        max_files_per_batch=resolved_options.max_files_per_batch,
+    )
 
     # Append design-coherence batch from mechanical concern signals.
     try:
@@ -261,14 +267,22 @@ def prepare_holistic_review(
     except (ImportError, AttributeError, TypeError, ValueError) as exc:
         logger.debug("Concern generation failed (best-effort): %s", exc)
 
-    batches = _filter_batches_to_dimensions(batches, dims)
+    batches = _filter_batches_to_dimensions(
+        batches,
+        dims,
+        fallback_max_files=resolved_options.max_files_per_batch,
+    )
     include_full_sweep = bool(resolved_options.include_full_sweep)
     # Explicitly scoped dimension runs should stay scoped by default.
     if resolved_options.dimensions:
         include_full_sweep = False
     if include_full_sweep:
         append_full_sweep_batch(
-            batches=batches, dims=dims, all_files=all_files, lang=lang
+            batches=batches,
+            dims=dims,
+            all_files=all_files,
+            lang=lang,
+            max_files=resolved_options.max_files_per_batch,
         )
 
     # Holistic mode can receive per-file-oriented dimensions via CLI suggestions.

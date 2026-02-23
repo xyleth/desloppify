@@ -36,6 +36,17 @@ ABSTRACTION_COMPONENT_NAMES = {
     "indirection_cost": "Indirection Cost",
     "interface_honesty": "Interface Honesty",
 }
+DEFAULT_REVIEW_BATCH_MAX_FILES = 80
+
+
+def _coerce_review_batch_file_limit(config: dict | None) -> int | None:
+    """Resolve per-batch file cap from config (0/negative => unlimited)."""
+    raw = (config or {}).get("review_batch_max_files", DEFAULT_REVIEW_BATCH_MAX_FILES)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_REVIEW_BATCH_MAX_FILES
+    return value if value > 0 else None
 
 
 def _merge_batch_results(batch_results: list[object]) -> dict[str, object]:
@@ -101,6 +112,7 @@ def _load_or_prepare_packet(
         options=review_mod.HolisticReviewPrepareOptions(
             dimensions=dimensions,
             files=found_files or None,
+            max_files_per_batch=_coerce_review_batch_file_limit(config),
         ),
     )
     packet["narrative"] = narrative

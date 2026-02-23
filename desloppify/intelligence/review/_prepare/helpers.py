@@ -26,6 +26,7 @@ def append_full_sweep_batch(
     dims: list[str],
     all_files: list[str],
     lang: Any,
+    max_files: int | None = None,
 ) -> None:
     """Append an optional cross-cutting full-codebase batch."""
     if not dims:
@@ -37,6 +38,8 @@ def append_full_sweep_batch(
             if zone.value in ("test", "generated", "vendor"):
                 continue
         all_rel_files.append(rel(filepath))
+        if isinstance(max_files, int) and max_files > 0 and len(all_rel_files) >= max_files:
+            break
     if not all_rel_files:
         return
     batches.append(

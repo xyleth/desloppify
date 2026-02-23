@@ -8,8 +8,10 @@ from typing import NamedTuple
 
 from desloppify.engine._state.filtering import (
     add_ignore,
+    finding_in_scan_scope,
     is_ignored,
     make_finding,
+    open_scope_breakdown,
     path_scoped_findings,
     remove_ignored_findings,
 )
@@ -102,8 +104,10 @@ __all__ = [
     "empty_state",
     "ensure_state_defaults",
     "find_suspect_detectors",
+    "finding_in_scan_scope",
     "get_objective_score",
     "get_overall_score",
+    "open_scope_breakdown",
     "get_strict_score",
     "get_verified_strict_score",
     "is_ignored",

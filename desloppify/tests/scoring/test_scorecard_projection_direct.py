@@ -40,7 +40,7 @@ def test_abstraction_dimension_cli_keys_use_components():
             }
         },
     )
-    assert keys == ["abstraction_leverage", "indirection_cost"]
+    assert keys == ["abstraction_fitness"]
 
 
 def test_scorecard_payload_includes_subjective_rows():

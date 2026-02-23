@@ -627,6 +627,7 @@ class TestCmdReviewPrepare:
         args.packet = str(packet_path)
         args.only_batches = None
         args.scan_after_import = False
+        args.allow_partial = False
 
         review_packet_dir = tmp_path / ".desloppify" / "review_packets"
         runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
@@ -758,6 +759,7 @@ class TestCmdReviewPrepare:
         assert payload["assessments"]["high_level_elegance"] == 71.5
         assert payload["assessments"]["mid_level_elegance"] == 65.0
         assert payload["assessments"]["low_level_elegance"] == 77.8
+        assert payload["reviewed_files"] == ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"]
         assert "dimension_notes" in payload
         assert "review_quality" in payload
         assert payload["review_quality"]["dimension_coverage"] == 0.667
@@ -772,6 +774,113 @@ class TestCmdReviewPrepare:
             captured["kwargs"]["trusted_assessment_label"]
             == "trusted internal run-batches import"
         )
+        assert captured["kwargs"]["allow_partial"] is False
+
+    def test_do_run_batches_forwards_allow_partial_when_enabled(
+        self, empty_state, tmp_path
+    ):
+        packet = {
+            "command": "review",
+            "mode": "holistic",
+            "language": "typescript",
+            "dimensions": ["mid_level_elegance"],
+            "investigation_batches": [
+                {
+                    "name": "Batch A",
+                    "dimensions": ["mid_level_elegance"],
+                    "files_to_read": ["src/a.ts"],
+                    "why": "A",
+                }
+            ],
+        }
+        packet_path = tmp_path / "packet.json"
+        packet_path.write_text(json.dumps(packet))
+
+        args = MagicMock()
+        args.path = str(tmp_path)
+        args.dimensions = None
+        args.runner = "codex"
+        args.parallel = False
+        args.dry_run = False
+        args.packet = str(packet_path)
+        args.only_batches = None
+        args.scan_after_import = False
+        args.allow_partial = True
+
+        review_packet_dir = tmp_path / ".desloppify" / "review_packets"
+        runs_dir = tmp_path / ".desloppify" / "subagents" / "runs"
+
+        def fake_subprocess_run(
+            cmd,
+            capture_output=False,
+            text=False,
+            timeout=None,
+            cwd=None,
+        ):
+            _ = capture_output, text, timeout, cwd
+            out_path = Path(cmd[cmd.index("-o") + 1])
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "assessments": {"mid_level_elegance": 77},
+                "dimension_notes": {
+                    "mid_level_elegance": {
+                        "evidence": ["seams are mostly explicit"],
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                        "confidence": "medium",
+                        "unreported_risk": "",
+                    }
+                },
+                "findings": [
+                    {
+                        "dimension": "mid_level_elegance",
+                        "identifier": "seam_style_drift",
+                        "summary": "Seam style drifts across adjacent modules",
+                        "confidence": "medium",
+                        "impact_scope": "module",
+                        "fix_scope": "single_edit",
+                    }
+                ],
+            }
+            out_path.write_text(json.dumps(payload))
+            return MagicMock(returncode=0, stdout="ok", stderr="")
+
+        captured: dict[str, object] = {}
+
+        def fake_import(import_file, _state, _lang, _sp, holistic=True, config=None, **kwargs):
+            captured["holistic"] = holistic
+            captured["config"] = config
+            captured["kwargs"] = kwargs
+            captured["payload"] = json.loads(Path(import_file).read_text())
+
+        lang = MagicMock()
+        lang.name = "typescript"
+
+        with (
+            patch(
+                "desloppify.app.commands.review.batch.subprocess.run",
+                side_effect=fake_subprocess_run,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.PROJECT_ROOT",
+                tmp_path,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.REVIEW_PACKET_DIR",
+                review_packet_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch.SUBAGENT_RUNS_DIR",
+                runs_dir,
+            ),
+            patch(
+                "desloppify.app.commands.review.batch._do_import",
+                side_effect=fake_import,
+            ),
+        ):
+            _do_run_batches(args, empty_state, lang, "fake_sp", config={})
+
+        assert captured["kwargs"]["allow_partial"] is True
 
     def test_do_run_batches_keeps_abstraction_component_breakdown(
         self, empty_state, tmp_path

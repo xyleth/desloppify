@@ -32,6 +32,7 @@ class TestDefaultConfig:
         cfg = default_config()
         assert cfg["target_strict_score"] == 95
         assert cfg["review_max_age_days"] == 30
+        assert cfg["review_batch_max_files"] == 80
         assert cfg["holistic_max_age_days"] == 30
         assert cfg["generate_scorecard"] is True
         assert cfg["badge_path"] == "scorecard.png"

@@ -120,6 +120,41 @@ def test_match_and_resolve_findings_updates_state():
     assert resolved["resolution_attestation"]["scan_verified"] is False
 
 
+def test_open_scope_breakdown_splits_in_scope_and_out_of_scope():
+    findings = {
+        "smells::src/a.py::x": {
+            "status": "open",
+            "detector": "smells",
+            "file": "src/a.py",
+        },
+        "smells::scripts/b.py::x": {
+            "status": "open",
+            "detector": "smells",
+            "file": "scripts/b.py",
+        },
+        "subjective_review::.::holistic_unreviewed": {
+            "status": "open",
+            "detector": "subjective_review",
+            "file": ".",
+        },
+        "smells::src/c.py::closed": {
+            "status": "fixed",
+            "detector": "smells",
+            "file": "src/c.py",
+        },
+    }
+
+    counts = filtering_mod.open_scope_breakdown(findings, "src")
+    assert counts == {"in_scope": 2, "out_of_scope": 1, "global": 3}
+
+    subjective_counts = filtering_mod.open_scope_breakdown(
+        findings,
+        "src",
+        detector="subjective_review",
+    )
+    assert subjective_counts == {"in_scope": 1, "out_of_scope": 0, "global": 1}
+
+
 def test_resolve_fixed_review_marks_assessment_stale_preserves_score():
     """Resolving a review finding as fixed marks assessment stale but keeps score."""
     state = schema_mod.empty_state()

@@ -14,6 +14,7 @@ from desloppify.app.commands.scan import (
     scan_reporting_dimensions as reporting_dimensions_mod,
 )
 from desloppify.app.commands.status_parts.render import (
+    print_open_scope_breakdown,
     print_scan_completeness,
     print_scan_metrics,
     score_summary_lines,
@@ -93,6 +94,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     ):
         print(colorize(line, style))
     print_scan_metrics(state)
+    print_open_scope_breakdown(state)
     print_scan_completeness(state)
 
     if dim_scores:
@@ -155,6 +157,12 @@ def _status_json_payload(
     suppression: dict,
 ) -> dict:
     scores = state_mod.score_snapshot(state)
+    findings = state.get("findings", {})
+    open_scope = (
+        state_mod.open_scope_breakdown(findings, state.get("scan_path"))
+        if isinstance(findings, dict)
+        else None
+    )
     return {
         "overall_score": scores.overall,
         "objective_score": scores.objective,
@@ -167,6 +175,7 @@ def _status_json_payload(
         "potentials": state.get("potentials"),
         "codebase_metrics": state.get("codebase_metrics"),
         "stats": stats,
+        "open_scope": open_scope,
         "suppression": suppression,
         "scan_count": state.get("scan_count", 0),
         "last_scan": state.get("last_scan"),

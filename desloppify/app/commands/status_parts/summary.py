@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from desloppify import state as state_mod
 from desloppify.utils import LOC_COMPACT_THRESHOLD, colorize
 
 
@@ -71,7 +72,26 @@ def print_scan_completeness(state: dict) -> None:
         )
 
 
+def print_open_scope_breakdown(state: dict) -> None:
+    """Print open counts with explicit in-scope/out-of-scope semantics."""
+    findings = state.get("findings", {})
+    if not isinstance(findings, dict):
+        return
+
+    counts = state_mod.open_scope_breakdown(findings, state.get("scan_path"))
+    print(
+        colorize(
+            "  "
+            f"open (in-scope): {counts['in_scope']} · "
+            f"open (out-of-scope carried): {counts['out_of_scope']} · "
+            f"open (global): {counts['global']}",
+            "dim",
+        )
+    )
+
+
 __all__ = [
+    "print_open_scope_breakdown",
     "print_scan_completeness",
     "print_scan_metrics",
     "score_summary_lines",

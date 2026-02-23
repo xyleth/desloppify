@@ -36,6 +36,7 @@ class ScanQueryPayload(TypedDict, total=False):
     hidden_total: int
     diff: dict[str, object]
     stats: dict[str, object]
+    open_scope: dict[str, int] | None
     warnings: list[str]
     dimension_scores: dict[str, object] | None
     score_breakdown: dict[str, object] | None

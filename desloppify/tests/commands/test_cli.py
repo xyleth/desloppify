@@ -393,6 +393,26 @@ class TestCreateParser:
         assert args.command == "issues"
         assert args.issues_action is None
 
+    def test_issues_accepts_state_file_flag(self, parser):
+        args = parser.parse_args(["issues", "--state-file", ".desloppify/state.json"])
+        assert args.command == "issues"
+        assert args.state == ".desloppify/state.json"
+
+    def test_issues_deprecated_state_flag_still_works(self, parser, capsys):
+        args = parser.parse_args(["issues", "--state", ".desloppify/state.json"])
+        assert args.command == "issues"
+        assert args.state == ".desloppify/state.json"
+        err = capsys.readouterr().err
+        assert "deprecated" in err
+        assert "--state" in err
+
+    def test_issues_rejects_status_like_state_path(self, parser, capsys):
+        with pytest.raises(SystemExit):
+            parser.parse_args(["issues", "--state-file", "resolved"])
+        err = capsys.readouterr().err
+        assert "looks like a status value" in err
+        assert "--state-file" in err
+
     def test_issues_show_subcommand(self, parser):
         args = parser.parse_args(["issues", "show", "3"])
         assert args.command == "issues"
@@ -410,6 +430,13 @@ class TestCreateParser:
         assert args.issues_action == "update"
         assert args.number == 2
         assert args.file == "analysis.md"
+
+    def test_issues_merge_subcommand(self, parser):
+        args = parser.parse_args(["issues", "merge", "--dry-run", "--similarity", "0.9"])
+        assert args.command == "issues"
+        assert args.issues_action == "merge"
+        assert args.dry_run is True
+        assert args.similarity == 0.9
 
     def test_config_command_defaults(self, parser):
         args = parser.parse_args(["config"])

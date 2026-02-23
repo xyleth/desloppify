@@ -632,6 +632,16 @@ class TestIssuesParser:
         assert args.number == 5
         assert args.file == "report.json"
 
+    def test_issues_merge(self):
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        parser_admin_mod._add_issues_parser(sub)
+
+        args = parser.parse_args(["issues", "merge", "--dry-run", "--similarity", "0.85"])
+        assert args.issues_action == "merge"
+        assert args.dry_run is True
+        assert args.similarity == 0.85
+
 
 class TestLangsAndUpdateSkillParsers:
     def test_langs_parser(self):

@@ -9,11 +9,19 @@ from desloppify.engine.planning.dimension_rows import (
 )
 from desloppify.scoring import DISPLAY_NAMES
 
+_COMPONENT_TO_DIMENSION: dict[str, str] = {
+    "abstraction leverage": "abstraction_fitness",
+    "indirection cost": "abstraction_fitness",
+    "interface honesty": "abstraction_fitness",
+}
+
 
 def dimension_cli_key(dimension_name: str) -> str:
     """Map a display name to a review --dimensions CLI key."""
     cleaned = dimension_name.replace(" (subjective)", "").strip()
     lowered = cleaned.lower()
+    if lowered in _COMPONENT_TO_DIMENSION:
+        return _COMPONENT_TO_DIMENSION[lowered]
     for key, display in DISPLAY_NAMES.items():
         if display.lower() == lowered:
             return key

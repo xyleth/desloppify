@@ -14,7 +14,7 @@ from desloppify.app.commands.scan.scan_workflow import (
 from desloppify.core._internal.text_utils import PROJECT_ROOT
 from desloppify.core.config import config_for_query
 from desloppify.scoring import compute_health_breakdown
-from desloppify.state import score_snapshot
+from desloppify.state import open_scope_breakdown, score_snapshot
 from desloppify.utils import colorize
 
 
@@ -30,6 +30,12 @@ def build_scan_query_payload(
 ) -> ScanQueryPayload:
     """Build the canonical query payload persisted after a scan."""
     scores = score_snapshot(state)
+    findings = state.get("findings", {})
+    open_scope = (
+        open_scope_breakdown(findings, state.get("scan_path"))
+        if isinstance(findings, dict)
+        else None
+    )
     return {
         "command": "scan",
         "overall_score": scores.overall,
@@ -47,6 +53,7 @@ def build_scan_query_payload(
         "hidden_total": noise.hidden_total,
         "diff": diff,
         "stats": state["stats"],
+        "open_scope": open_scope,
         "warnings": warnings,
         "dimension_scores": state.get("dimension_scores"),
         "score_breakdown": compute_health_breakdown(state.get("dimension_scores", {})),

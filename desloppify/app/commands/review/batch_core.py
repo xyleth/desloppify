@@ -341,19 +341,75 @@ def _accumulate_batch_scores(
                     )
 
 
+def _normalize_word_set(text: str) -> set[str]:
+    """Tokenize text into a normalized word set for light concept matching."""
+    words = "".join(ch.lower() if ch.isalnum() else " " for ch in text).split()
+    return {word for word in words if len(word) >= 3}
+
+
+def _finding_identity_key(finding: dict[str, Any]) -> str:
+    """Build a stable concept key; prefer dimension+identifier when available."""
+    dim = str(finding.get("dimension", "")).strip()
+    ident = str(finding.get("identifier", "")).strip()
+    if ident:
+        return f"{dim}::{ident}"
+    summary = str(finding.get("summary", "")).strip()
+    summary_terms = sorted(_normalize_word_set(summary))
+    if summary_terms:
+        return f"{dim}::summary::{','.join(summary_terms[:8])}"
+    return f"{dim}::{summary}"
+
+
+def _merge_finding_payload(existing: dict[str, Any], incoming: dict[str, Any]) -> None:
+    """Merge two concept-equivalent findings into the existing payload."""
+    for field in ("related_files", "evidence"):
+        merged_values: list[str] = []
+        seen: set[str] = set()
+        for source in (existing.get(field), incoming.get(field)):
+            if not isinstance(source, list):
+                continue
+            for item in source:
+                text = str(item).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                merged_values.append(text)
+        if merged_values:
+            existing[field] = merged_values
+
+    # Prefer richer summary/suggestion text when they differ.
+    existing_summary = str(existing.get("summary", "")).strip()
+    incoming_summary = str(incoming.get("summary", "")).strip()
+    if len(incoming_summary) > len(existing_summary):
+        existing["summary"] = incoming_summary
+
+    existing_suggestion = str(existing.get("suggestion", "")).strip()
+    incoming_suggestion = str(incoming.get("suggestion", "")).strip()
+    if len(incoming_suggestion) > len(existing_suggestion):
+        existing["suggestion"] = incoming_suggestion
+
+    merged_from = existing.get("merged_from")
+    if not isinstance(merged_from, list):
+        merged_from = []
+    incoming_identifier = str(incoming.get("identifier", "")).strip()
+    if incoming_identifier and incoming_identifier not in merged_from:
+        merged_from.append(incoming_identifier)
+    if merged_from:
+        existing["merged_from"] = merged_from
+
+
 def _accumulate_batch_findings(
     result: dict[str, Any],
     finding_map: dict[str, dict[str, Any]],
 ) -> None:
     """Deduplicate and accumulate findings from one batch into finding_map."""
     for finding in result.get("findings", []):
-        dim = str(finding.get("dimension", "")).strip()
-        ident = str(finding.get("identifier", "")).strip()
-        summary = str(finding.get("summary", "")).strip()
-        dedupe_key = f"{dim}::{ident}::{summary}"
-        if dedupe_key in finding_map:
+        dedupe_key = _finding_identity_key(finding)
+        existing = finding_map.get(dedupe_key)
+        if existing is None:
+            finding_map[dedupe_key] = finding
             continue
-        finding_map[dedupe_key] = finding
+        _merge_finding_payload(existing, finding)
 
 
 def _accumulate_batch_quality(

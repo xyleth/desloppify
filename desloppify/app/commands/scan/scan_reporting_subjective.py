@@ -76,6 +76,19 @@ def coerce_str_keys(value: object) -> list[str]:
     return [key for key in value if isinstance(key, str) and key]
 
 
+def subtract_reason_counts(
+    total_counts: dict[str, int],
+    scoped_counts: dict[str, int],
+) -> dict[str, int]:
+    """Subtract scoped reason counters from global counters."""
+    remainder: dict[str, int] = {}
+    for reason, total in total_counts.items():
+        delta = int(total) - int(scoped_counts.get(reason, 0))
+        if delta > 0:
+            remainder[reason] = delta
+    return remainder
+
+
 def subjective_rerun_command(
     items: list[dict],
     *,
@@ -345,17 +358,33 @@ def show_subjective_paths(
     )
     low_assessed = followup.low_assessed
 
-    scoped = state_mod.path_scoped_findings(
-        state.get("findings", {}), state.get("scan_path")
-    )
-    coverage_total, reason_counts, holistic_reason_counts = (
+    all_findings = state.get("findings", {})
+    if not isinstance(all_findings, dict):
+        all_findings = {}
+    scoped = state_mod.path_scoped_findings(all_findings, state.get("scan_path"))
+    coverage_in_scope, reason_counts_in_scope, holistic_reason_counts_in_scope = (
         subjective_integrity_mod.subjective_review_open_breakdown(scoped)
     )
-    holistic_total = sum(holistic_reason_counts.values())
+    coverage_global, reason_counts_global, holistic_reason_counts_global = (
+        subjective_integrity_mod.subjective_review_open_breakdown(all_findings)
+    )
+    if not all_findings and coverage_global == 0 and coverage_in_scope > 0:
+        # Test/mocked states may supply only scoped findings.
+        coverage_global = coverage_in_scope
+        reason_counts_global = dict(reason_counts_in_scope)
+        holistic_reason_counts_global = dict(holistic_reason_counts_in_scope)
+    coverage_out_of_scope = max(coverage_global - coverage_in_scope, 0)
+    reason_counts_out_of_scope = subtract_reason_counts(
+        reason_counts_global,
+        reason_counts_in_scope,
+    )
+    holistic_in_scope = sum(holistic_reason_counts_in_scope.values())
+    holistic_global = sum(holistic_reason_counts_global.values())
+    holistic_out_of_scope = max(holistic_global - holistic_in_scope, 0)
     if (
         not unassessed
         and not low_assessed
-        and coverage_total <= 0
+        and coverage_global <= 0
         and not followup.integrity_notice
     ):
         return
@@ -386,11 +415,11 @@ def show_subjective_paths(
                     )
                 )
 
-    if unassessed or holistic_total > 0:
+    if unassessed or holistic_global > 0:
         integrity_bits: list[str] = []
         if unassessed:
             integrity_bits.append("unassessed subjective dimensions")
-        if holistic_total > 0:
+        if holistic_global > 0:
             integrity_bits.append("holistic review stale/missing")
         integrity_label = " + ".join(integrity_bits)
         print(colorize_fn(f"    High-priority integrity gap: {integrity_label}", "yellow"))
@@ -441,24 +470,54 @@ def show_subjective_paths(
             )
         )
 
-    if coverage_total > 0:
+    if coverage_global > 0:
         detail = []
-        if reason_counts.get("changed", 0) > 0:
-            detail.append(f"{reason_counts['changed']} changed")
-        if reason_counts.get("unreviewed", 0) > 0:
-            detail.append(f"{reason_counts['unreviewed']} unreviewed")
+        if reason_counts_in_scope.get("changed", 0) > 0:
+            detail.append(f"{reason_counts_in_scope['changed']} changed")
+        if reason_counts_in_scope.get("unreviewed", 0) > 0:
+            detail.append(f"{reason_counts_in_scope['unreviewed']} unreviewed")
         reason_text = ", ".join(detail) if detail else "stale/unreviewed"
-        suffix = "file" if coverage_total == 1 else "files"
+        suffix = "file" if coverage_in_scope == 1 else "files"
         print(
             colorize_fn(
-                f"    Coverage debt: {coverage_total} {suffix} need review ({reason_text})",
+                f"    Coverage debt: {coverage_in_scope} {suffix} need review ({reason_text})",
                 "yellow",
             )
         )
-        if holistic_total > 0:
+        print(
+            colorize_fn(
+                "    Scope split: "
+                f"open (in-scope) {coverage_in_scope} · "
+                f"open (out-of-scope carried) {coverage_out_of_scope} · "
+                f"open (global) {coverage_global}",
+                "yellow",
+            )
+        )
+        if reason_counts_out_of_scope:
+            out_detail: list[str] = []
+            if reason_counts_out_of_scope.get("changed", 0) > 0:
+                out_detail.append(f"{reason_counts_out_of_scope['changed']} changed")
+            if reason_counts_out_of_scope.get("unreviewed", 0) > 0:
+                out_detail.append(
+                    f"{reason_counts_out_of_scope['unreviewed']} unreviewed"
+                )
+            if not out_detail:
+                out_detail = [
+                    f"{count} {reason}"
+                    for reason, count in sorted(reason_counts_out_of_scope.items())
+                ]
             print(
                 colorize_fn(
-                    f"    Includes {holistic_total} holistic stale/missing signal(s).",
+                    "    Out-of-scope carried reasons: "
+                    + ", ".join(out_detail),
+                    "yellow",
+                )
+            )
+        if holistic_global > 0:
+            print(
+                colorize_fn(
+                    f"    Includes {holistic_global} holistic stale/missing signal(s)"
+                    f" ({holistic_in_scope} in-scope, {holistic_out_of_scope} out-of-scope carried).",
                     "yellow",
                 )
             )

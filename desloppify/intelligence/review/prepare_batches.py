@@ -425,7 +425,10 @@ def build_investigation_batches(
 
 
 def filter_batches_to_dimensions(
-    batches: list[dict], dimensions: list[str]
+    batches: list[dict],
+    dimensions: list[str],
+    *,
+    fallback_max_files: int | None = 80,
 ) -> list[dict]:
     """Keep only dimensions explicitly active for this holistic review run.
 
@@ -451,10 +454,10 @@ def filter_batches_to_dimensions(
 
     # Keep fallback batches tractable; giant sweeps are expensive and often
     # unnecessary when dimensions are already explicitly scoped.
-    fallback_files = _collect_files_from_batches(
-        filtered or batches,
-        max_files=80,
-    )
+    max_files = fallback_max_files if isinstance(fallback_max_files, int) else None
+    if isinstance(max_files, int) and max_files <= 0:
+        max_files = None
+    fallback_files = _collect_files_from_batches(filtered or batches, max_files=max_files)
     if not fallback_files:
         return filtered
 

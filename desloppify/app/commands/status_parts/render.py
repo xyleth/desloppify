@@ -13,6 +13,7 @@ from desloppify.app.commands.scan import (
 )
 from desloppify.app.commands.scan.scan_reporting_presentation import dimension_bar
 from desloppify.app.commands.status_parts.summary import (
+    print_open_scope_breakdown,
     print_scan_completeness,
     print_scan_metrics,
     score_summary_lines,
@@ -85,6 +86,12 @@ def write_status_query(
     strict_score: float | None,
     verified_strict_score: float | None,
 ) -> None:
+    findings = state.get("findings", {})
+    open_scope = (
+        state_mod.open_scope_breakdown(findings, state.get("scan_path"))
+        if isinstance(findings, dict)
+        else None
+    )
     write_query(
         {
             "command": "status",
@@ -103,6 +110,7 @@ def write_status_query(
             "suppression": suppression,
             "potentials": state.get("potentials"),
             "codebase_metrics": state.get("codebase_metrics"),
+            "open_scope": open_scope,
             "score_breakdown": compute_health_breakdown(dim_scores) if dim_scores else None,
             "next_command": _status_next_command(narrative),
             "narrative": narrative,
@@ -512,6 +520,7 @@ def show_review_summary(state: dict):
 
 
 __all__ = [
+    "print_open_scope_breakdown",
     "print_scan_completeness",
     "print_scan_metrics",
     "score_summary_lines",

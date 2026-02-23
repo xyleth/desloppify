@@ -9,6 +9,7 @@ from unittest.mock import patch
 from desloppify.app.commands.helpers.runtime import CommandRuntime
 from desloppify.app.commands.issues_cmd import (
     _list_issues,
+    _merge_issues,
     _show_issue,
     _update_issue,
     cmd_issues,
@@ -400,6 +401,8 @@ class TestCmdIssues:
         number=None,
         file=None,
         lang=None,
+        dry_run=False,
+        similarity=0.8,
     ):
         """Build a minimal args namespace."""
         args = argparse.Namespace(
@@ -412,6 +415,8 @@ class TestCmdIssues:
             number=number,
             file=file,
             lang=lang or "python",
+            dry_run=dry_run,
+            similarity=similarity,
             exclude=None,
         )
         return args
@@ -432,6 +437,12 @@ class TestCmdIssues:
         with patch("desloppify.app.commands.issues_cmd._list_issues") as mock_list:
             cmd_issues(args)
         mock_list.assert_called_once_with(args)
+
+    def test_cmd_dispatch_accepts_merge_action(self):
+        args = self._make_args({"findings": {}}, issues_action="merge")
+        with patch("desloppify.app.commands.issues_cmd._merge_issues") as mock_merge:
+            cmd_issues(args)
+        mock_merge.assert_called_once_with(args)
 
     def test_list_empty(self, capsys):
         state = {"findings": {}}
@@ -495,6 +506,62 @@ class TestCmdIssues:
         _update_issue(args)
         err = capsys.readouterr().err
         assert "File not found" in err
+
+    def test_merge_issues_dry_run(self, capsys):
+        base_id = "review::.::holistic::logic_clarity::duplicate_predicate::1111aaaa"
+        dup_id = "review::.::holistic::logic_clarity::duplicate_predicate::2222bbbb"
+        keep = _finding(
+            fid=base_id,
+            dimension="logic_clarity",
+            confidence="high",
+            summary="Processing predicate mismatch in task filtering",
+            related_files=["src/shared/hooks/useTasks.ts", "src/shared/lib/tasks.ts"],
+            evidence=["predicate A", "predicate B"],
+        )
+        dup = _finding(
+            fid=dup_id,
+            dimension="logic_clarity",
+            confidence="medium",
+            summary="Processing predicate mismatch across task filtering paths",
+            related_files=["src/shared/lib/tasks.ts", "src/shared/hooks/useTasks.ts"],
+            evidence=["predicate C"],
+        )
+        state = _state_with(keep, dup)
+        args = self._make_args(state, issues_action="merge", dry_run=True)
+        _merge_issues(args)
+        out = capsys.readouterr().out
+        assert "Merge groups: 1" in out
+        assert state["findings"][dup_id]["status"] == "open"
+
+    def test_merge_issues_applies_merge(self, capsys):
+        base_id = "review::.::holistic::logic_clarity::duplicate_predicate::1111aaaa"
+        dup_id = "review::.::holistic::logic_clarity::duplicate_predicate::2222bbbb"
+        keep = _finding(
+            fid=base_id,
+            dimension="logic_clarity",
+            confidence="high",
+            summary="Processing predicate mismatch in task filtering",
+            related_files=["src/shared/hooks/useTasks.ts", "src/shared/lib/tasks.ts"],
+            evidence=["predicate A"],
+        )
+        dup = _finding(
+            fid=dup_id,
+            dimension="logic_clarity",
+            confidence="medium",
+            summary="Processing predicate mismatch across task filtering paths",
+            related_files=["src/shared/lib/tasks.ts", "src/shared/hooks/useTasks.ts"],
+            evidence=["predicate C"],
+        )
+        state = _state_with(keep, dup)
+        args = self._make_args(state, issues_action="merge", dry_run=False)
+        with patch("desloppify.state.save_state"):
+            _merge_issues(args)
+        out = capsys.readouterr().out
+        assert "State updated with merged issue groups" in out
+        assert state["findings"][dup_id]["status"] == "auto_resolved"
+        assert state["findings"][dup_id]["note"] == f"merged into {base_id}"
+        merged_from = state["findings"][base_id]["detail"].get("merged_from", [])
+        assert dup_id in merged_from
 
 
 # ---------------------------------------------------------------------------

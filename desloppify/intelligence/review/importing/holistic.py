@@ -278,6 +278,12 @@ def import_holistic_findings(
         project_root=project_root,
         utc_now_fn=utc_now_fn,
     )
+    resolve_reviewed_file_coverage_findings(
+        state,
+        diff,
+        reviewed_files,
+        utc_now_fn=utc_now_fn,
+    )
     update_holistic_review_cache(
         state,
         findings_list,
@@ -377,6 +383,48 @@ def resolve_holistic_coverage_findings(
         finding["resolution_attestation"] = {
             "kind": "agent_import",
             "text": "Holistic review refreshed; coverage marker superseded",
+            "attested_at": now,
+            "scan_verified": False,
+        }
+        diff["auto_resolved"] += 1
+
+
+def resolve_reviewed_file_coverage_findings(
+    state: dict[str, Any],
+    diff: dict[str, Any],
+    reviewed_files: list[str],
+    *,
+    utc_now_fn=utc_now,
+) -> None:
+    """Resolve per-file subjective coverage markers for freshly reviewed files."""
+    if not reviewed_files:
+        return
+
+    reviewed_set = {path for path in reviewed_files if isinstance(path, str) and path}
+    if not reviewed_set:
+        return
+
+    now = utc_now_fn()
+    for finding in state.get("findings", {}).values():
+        if finding.get("status") != "open":
+            continue
+        if finding.get("detector") != "subjective_review":
+            continue
+
+        finding_id = finding.get("id", "")
+        if "::holistic_unreviewed" in finding_id or "::holistic_stale" in finding_id:
+            continue
+
+        finding_file = finding.get("file", "")
+        if finding_file not in reviewed_set:
+            continue
+
+        finding["status"] = "auto_resolved"
+        finding["resolved_at"] = now
+        finding["note"] = "resolved by reviewed_files cache refresh"
+        finding["resolution_attestation"] = {
+            "kind": "agent_import",
+            "text": "Per-file review cache refreshed for this file",
             "attested_at": now,
             "scan_verified": False,
         }

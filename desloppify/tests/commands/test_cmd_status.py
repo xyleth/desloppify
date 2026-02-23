@@ -8,7 +8,10 @@ from desloppify.app.commands.status import (
     show_structural_areas,
     show_subjective_followup,
 )
-from desloppify.app.commands.status_parts.summary import score_summary_lines
+from desloppify.app.commands.status_parts.summary import (
+    print_open_scope_breakdown,
+    score_summary_lines,
+)
 
 # ---------------------------------------------------------------------------
 # Module-level sanity — minimal behavioral checks
@@ -72,6 +75,21 @@ class TestStatusModuleSanity:
         )
         assert len(lines) == 2
         assert "unavailable" in lines[0][0]
+
+    def test_print_open_scope_breakdown_labels_scope_counts(self, capsys):
+        print_open_scope_breakdown(
+            {
+                "scan_path": "src",
+                "findings": {
+                    "a": {"status": "open", "file": "src/a.py"},
+                    "b": {"status": "open", "file": "scripts/b.py"},
+                },
+            }
+        )
+        out = capsys.readouterr().out
+        assert "open (in-scope): 1" in out
+        assert "open (out-of-scope carried): 1" in out
+        assert "open (global): 2" in out
 
 
 # ---------------------------------------------------------------------------

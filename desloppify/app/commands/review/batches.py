@@ -82,6 +82,38 @@ def _print_review_quality(quality: object, *, colorize_fn) -> None:
     )
 
 
+def _collect_reviewed_files_from_batches(
+    *,
+    batches: list[dict],
+    selected_indexes: list[int],
+) -> list[str]:
+    """Collect normalized file paths reviewed in the selected batch set."""
+    reviewed: list[str] = []
+    seen: set[str] = set()
+    for idx in selected_indexes:
+        if idx < 0 or idx >= len(batches):
+            continue
+        batch = batches[idx]
+        if not isinstance(batch, dict):
+            continue
+        files = batch.get("files_to_read", [])
+        if not isinstance(files, list):
+            continue
+        for raw in files:
+            if not isinstance(raw, str):
+                continue
+            path = raw.strip().strip(",'\"")
+            if not path or path in {".", ".."}:
+                continue
+            if path.endswith("/"):
+                continue
+            if path in seen:
+                continue
+            seen.add(path)
+            reviewed.append(path)
+    return reviewed
+
+
 def do_run_batches(
     args,
     state,
@@ -157,6 +189,29 @@ def do_run_batches(
             log_file=log_file,
         )
 
+    total_batches = len(selected_indexes)
+    batch_positions = {batch_idx: pos + 1 for pos, batch_idx in enumerate(selected_indexes)}
+
+    def _report_progress(batch_index: int, event: str, code: int | None = None) -> None:
+        position = batch_positions.get(batch_index, 0)
+        if event == "start":
+            print(
+                colorize_fn(
+                    f"  Batch {position}/{total_batches} started (#{batch_index + 1})",
+                    "dim",
+                )
+            )
+            return
+        if event == "done":
+            status = "done" if code == 0 else f"failed ({code})"
+            tone = "dim" if code == 0 else "yellow"
+            print(
+                colorize_fn(
+                    f"  Batch {position}/{total_batches} {status} (#{batch_index + 1})",
+                    tone,
+                )
+            )
+
     failures = execute_batches_fn(
         selected_indexes=selected_indexes,
         prompt_files=prompt_files,
@@ -165,6 +220,7 @@ def do_run_batches(
         run_parallel=bool(getattr(args, "parallel", False)),
         run_batch_fn=_run_batch,
         safe_write_text_fn=safe_write_text_fn,
+        progress_fn=_report_progress,
     )
 
     allowed_dims = {
@@ -186,6 +242,18 @@ def do_run_batches(
         )
 
     merged = merge_batch_results_fn(batch_results)
+    reviewed_files = _collect_reviewed_files_from_batches(
+        batches=batches,
+        selected_indexes=selected_indexes,
+    )
+    if reviewed_files:
+        merged["reviewed_files"] = reviewed_files
+        print(
+            colorize_fn(
+                f"  Reviewed files captured for cache refresh: {len(reviewed_files)}",
+                "dim",
+            )
+        )
     merged["provenance"] = build_import_provenance_fn(
         runner=runner,
         blind_packet_path=prompt_packet_path,
@@ -196,12 +264,17 @@ def do_run_batches(
     safe_write_text_fn(merged_path, json.dumps(merged, indent=2) + "\n")
     print(colorize_fn(f"\n  Merged outputs: {merged_path}", "bold"))
     _print_review_quality(merged.get("review_quality", {}), colorize_fn=colorize_fn)
+    allow_partial = getattr(args, "allow_partial", False)
+    if not isinstance(allow_partial, bool):
+        allow_partial = False
+
     do_import_fn(
         str(merged_path),
         state,
         lang,
         state_file,
         config=config,
+        allow_partial=allow_partial,
         trusted_assessment_source=True,
         trusted_assessment_label="trusted internal run-batches import",
     )

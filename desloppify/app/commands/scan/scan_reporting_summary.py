@@ -67,6 +67,15 @@ def show_score_delta(
     """Print the canonical score trio with deltas."""
     stats = state["stats"]
     new = state_mod.score_snapshot(state)
+    findings = state.get("findings", {})
+    scoped_open = int(stats.get("open", 0) or 0)
+    out_of_scope_open = 0
+    global_open = scoped_open
+    if isinstance(findings, dict) and findings:
+        scope_counts = state_mod.open_scope_breakdown(findings, state.get("scan_path"))
+        scoped_open = int(scope_counts.get("in_scope", scoped_open) or 0)
+        out_of_scope_open = int(scope_counts.get("out_of_scope", 0) or 0)
+        global_open = int(scope_counts.get("global", scoped_open) or 0)
 
     wontfix = stats.get("wontfix", 0)
     wontfix_str = f" · {wontfix} wontfix" if wontfix else ""
@@ -102,7 +111,11 @@ def show_score_delta(
             verified_color,
         )
         + colorize(
-            f"  |  {stats['open']} open{wontfix_str} / {stats['total']} total",
+            "  |  "
+            f"open (in-scope): {scoped_open} · "
+            f"open (out-of-scope carried): {out_of_scope_open} · "
+            f"open (global): {global_open}"
+            f"{wontfix_str} / {stats['total']} in-scope total",
             "dim",
         )
     )

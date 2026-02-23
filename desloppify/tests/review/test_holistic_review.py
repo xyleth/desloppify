@@ -471,6 +471,46 @@ class TestImportHolisticFindings:
         assert entry.get("content_hash")
         assert entry.get("reviewed_at")
 
+    def test_reviewed_files_auto_resolves_per_file_coverage_markers(self, tmp_path):
+        state = empty_state()
+        module_path = tmp_path / "pkg" / "module.py"
+        module_path.parent.mkdir(parents=True, exist_ok=True)
+        module_path.write_text("def run():\n    return 1\n")
+
+        coverage_id = "subjective_review::pkg/module.py::changed"
+        state["findings"][coverage_id] = {
+            "id": coverage_id,
+            "detector": "subjective_review",
+            "file": "pkg/module.py",
+            "status": "open",
+            "summary": "File changed since last review",
+            "detail": {"reason": "changed"},
+            "tier": 4,
+            "confidence": "medium",
+            "first_seen": "2026-01-01T00:00:00+00:00",
+            "last_seen": "2026-01-01T00:00:00+00:00",
+            "resolved_at": None,
+            "reopen_count": 0,
+            "note": None,
+        }
+
+        payload = {
+            "assessments": {"high_level_elegance": 95},
+            "findings": [],
+            "reviewed_files": ["pkg/module.py"],
+        }
+
+        from desloppify.core.runtime_state import RuntimeContext, runtime_scope
+
+        ctx = RuntimeContext(project_root=tmp_path)
+        with runtime_scope(ctx), patch(
+            "desloppify.intelligence.review.importing.holistic.PROJECT_ROOT", tmp_path
+        ):
+            diff = import_holistic_findings(payload, state, "python")
+
+        assert diff["auto_resolved"] >= 1
+        assert state["findings"][coverage_id]["status"] == "auto_resolved"
+
     def test_holistic_potential_added(self):
         state = empty_state()
         findings_data = [

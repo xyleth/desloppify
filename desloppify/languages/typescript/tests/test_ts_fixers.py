@@ -520,6 +520,65 @@ class TestFixDebugLogs:
         content = ts_file.read_text()
         assert "DEBUG" not in content
 
+    def test_keeps_logger_wrapper_arrow_methods(self, tmp_path):
+        """Logger object arrow-method wrappers around console.log are preserved."""
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            textwrap.dedent("""\
+            const log = {
+              info: (msg: string) => console.log('[APP] ' + msg),
+              warn: (msg: string) => console.log('[APP] ' + msg),
+              error: (msg: string) => console.error('[APP] ' + msg),
+            };
+        """)
+        )
+        entries = [
+            {
+                "file": str(ts_file),
+                "line": 2,
+                "tag": "APP",
+                "content": "info: (msg: string) => console.log('[APP] ' + msg),",
+            },
+            {
+                "file": str(ts_file),
+                "line": 3,
+                "tag": "APP",
+                "content": "warn: (msg: string) => console.log('[APP] ' + msg),",
+            },
+        ]
+        results = fix_debug_logs(entries, dry_run=False)
+        assert results == []
+        content = ts_file.read_text()
+        assert "info:" in content
+        assert "warn:" in content
+        assert "error:" in content
+
+    def test_keeps_logger_wrapper_method_bodies(self, tmp_path):
+        """Logger object methods that contain console.log are preserved."""
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            textwrap.dedent("""\
+            const log = {
+              info(msg: string) {
+                console.log('[APP] ' + msg);
+              },
+            };
+        """)
+        )
+        entries = [
+            {
+                "file": str(ts_file),
+                "line": 3,
+                "tag": "APP",
+                "content": "console.log('[APP] ' + msg);",
+            }
+        ]
+        results = fix_debug_logs(entries, dry_run=False)
+        assert results == []
+        content = ts_file.read_text()
+        assert "info(msg: string)" in content
+        assert "console.log('[APP] '" in content
+
     def test_dry_run(self, tmp_path):
         """dry_run=True reports changes without writing."""
         ts_file = tmp_path / "app.ts"

@@ -22,12 +22,13 @@ from desloppify.languages._framework.treesitter.phases import all_treesitter_pha
 from desloppify.languages.go import test_coverage as go_test_coverage_hooks
 from desloppify.languages.go.commands import get_detect_commands
 from desloppify.languages.go.detectors.deps import build_dep_graph as build_go_dep_graph
+from desloppify.languages.go.detectors.security import detect_go_security
 from desloppify.languages.go.extractors import (
     GO_FILE_EXCLUSIONS,
     extract_functions,
     find_go_files,
 )
-from desloppify.languages.go.phases import _phase_structural
+from desloppify.languages.go.phases import _phase_smells, _phase_structural
 from desloppify.languages.go.review import (
     HOLISTIC_REVIEW_DIMENSIONS,
     LOW_VALUE_PATTERN,
@@ -51,6 +52,9 @@ register_lang_hooks("go", test_coverage=go_test_coverage_hooks)
 class GoConfig(LangConfig):
     """Go language configuration."""
 
+    def detect_lang_security(self, files, zone_map):
+        return detect_go_security(files, zone_map)
+
     def __init__(self):
         super().__init__(
             name="go",
@@ -62,6 +66,7 @@ class GoConfig(LangConfig):
             barrel_names=set(),
             phases=[
                 DetectorPhase("Structural analysis", _phase_structural),
+                DetectorPhase("Go smells", _phase_smells),
                 make_tool_phase(
                     "golangci-lint",
                     "golangci-lint run --out-format=json",
